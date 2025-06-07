@@ -178,7 +178,7 @@ function define_disk_layout() {
 	esac
 }
 
-ALL_GENTOO_ARCHS=("x86" "amd64" "arm" "arm64")
+ALL_GENTOO_ARCHS=("x86")
 ALL_GENTOO_SUBARCHS=("i486" "i686")
 ALL_STAGE3_VARIANTS=(
 	"openrc"                   "openrc                  | Minimal OpenRC base (recommended)"
@@ -400,7 +400,7 @@ function load_config() {
 }
 
 function load_default_config() {
-	HOSTNAME="gentoo"
+	HOSTNAME="libero"
 	TIMEZONE="$(get_timezone)"
 	KEYMAP="$(get_default_keymap)"
 	KEYMAP_INITRAMFS="$KEYMAP"
@@ -425,7 +425,7 @@ function load_default_config() {
 	PORTAGE_GIT_MIRROR="https://anongit.gentoo.org/git/repo/sync/gentoo.git"
 
 	GENTOO_MIRROR="https://mirror.leaseweb.com/gentoo"
-	GENTOO_ARCH="amd64"
+	GENTOO_ARCH="x86"
 	GENTOO_SUBARCH=""
 
 	USE_PORTAGE_TESTING=true
