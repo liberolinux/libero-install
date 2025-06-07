@@ -402,6 +402,21 @@ function main_install_gentoo_in_chroot() {
 	configure_base_system
 	maybe_exec 'after_configure_base_system'
 
+	# Configure os-release
+	einfo "Configuring os-release"
+	echo 'NAME="Libero GNU/Linux"' > /usr/lib/os-release \
+		|| die "Could not write to /usr/lib/os-release"
+	echo 'ID=libero' >> /usr/lib/os-release \
+		|| die "Could not append to /usr/lib/os-release"
+	echo 'PRETTY_NAME="Libero GNU/Linux"' >> /usr/lib/os-release \
+		|| die "Could not append to /usr/lib/os-release"
+	echo 'ANSI_COLOR="1;34"' >> /usr/lib/os-release \
+		|| die "Could not append to /usr/lib/os-release"
+	echo 'HOME_URL="https://libero.eu.org/"' >> /usr/lib/os-release \
+		|| die "Could not append to /usr/lib/os-release"
+	echo 'VERSION_ID="1.0"' >> /usr/lib/os-release \
+		|| die "Could not append to /usr/lib/os-release"
+
 	# Prepare portage environment
 	maybe_exec 'before_configure_portage'
 	configure_portage
