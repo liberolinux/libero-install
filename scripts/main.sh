@@ -414,7 +414,7 @@ function main_install_gentoo_in_chroot() {
 		|| die "Could not append to /usr/lib/os-release"
 	echo 'HOME_URL="https://libero.eu.org/"' >> /usr/lib/os-release \
 		|| die "Could not append to /usr/lib/os-release"
-	echo 'VERSION_ID="1.0"' >> /usr/lib/os-release \
+	echo 'VERSION_ID="1.1"' >> /usr/lib/os-release \
 		|| die "Could not append to /usr/lib/os-release"
 
 	# Prepare portage environment
