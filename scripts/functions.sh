@@ -860,12 +860,12 @@ function download_stage3() {
 		download "$STAGE3_RELEASES/${CURRENT_STAGE3}.DIGESTS" "${CURRENT_STAGE3}.DIGESTS"
 
 		# Import libero keys
-		einfo "Importing libero gpg key"
+		einfo "Importing gentoo gpg key"
 		local LIBERO_GPG_KEY="$TMP_DIR/libero-keys.gpg"
-		download "https://libero.org/.well-known/openpgpkey/hu/wtktzo4gyuhzu8a4z5fdj3fgmr1u6tob?l=releng" "$LIBERO_GPG_KEY" \
-			|| die "Could not retrieve libero gpg key"
+		download "https://gentoo.org/.well-known/openpgpkey/hu/wtktzo4gyuhzu8a4z5fdj3fgmr1u6tob?l=releng" "$LIBERO_GPG_KEY" \
+			|| die "Could not retrieve gentoo gpg key"
 		gpg --quiet --import < "$LIBERO_GPG_KEY" \
-			|| die "Could not import libero gpg key"
+			|| die "Could not import gentoo gpg key"
 
 		# Verify DIGESTS signature
 		einfo "Verifying tarball signature"
