@@ -21,48 +21,48 @@ function get_source_dir() {
 
 ACTUAL_WORKING_DIRECTORY="$(realpath "$(pwd)")" || exit 1
 export ACTUAL_WORKING_DIRECTORY
-GENTOO_INSTALL_REPO_DIR_ORIGINAL="$(get_source_dir)"
-export GENTOO_INSTALL_REPO_DIR_ORIGINAL
-export GENTOO_INSTALL_REPO_DIR="$GENTOO_INSTALL_REPO_DIR_ORIGINAL"
-export GENTOO_INSTALL_REPO_SCRIPT_ACTIVE=true
-export GENTOO_INSTALL_REPO_SCRIPT_PID=$$
+LIBERO_INSTALL_REPO_DIR_ORIGINAL="$(get_source_dir)"
+export LIBERO_INSTALL_REPO_DIR_ORIGINAL
+export LIBERO_INSTALL_REPO_DIR="$LIBERO_INSTALL_REPO_DIR_ORIGINAL"
+export LIBERO_INSTALL_REPO_SCRIPT_ACTIVE=true
+export LIBERO_INSTALL_REPO_SCRIPT_PID=$$
 
 umask 0077
 
 # shellcheck source=./scripts/utils.sh
-source "$GENTOO_INSTALL_REPO_DIR/scripts/utils.sh"
+source "$LIBERO_INSTALL_REPO_DIR/scripts/utils.sh"
 # shellcheck source=./scripts/config.sh
-source "$GENTOO_INSTALL_REPO_DIR/scripts/config.sh"
+source "$LIBERO_INSTALL_REPO_DIR/scripts/config.sh"
 # shellcheck source=./scripts/functions.sh
-source "$GENTOO_INSTALL_REPO_DIR/scripts/functions.sh"
+source "$LIBERO_INSTALL_REPO_DIR/scripts/functions.sh"
 # shellcheck source=./scripts/main.sh
-source "$GENTOO_INSTALL_REPO_DIR/scripts/main.sh"
+source "$LIBERO_INSTALL_REPO_DIR/scripts/main.sh"
 
 
 ################################################
 # Main dispatch
 
 # Instantly kill when pressing ctrl-c
-trap 'kill "$GENTOO_INSTALL_REPO_SCRIPT_PID"' INT
+trap 'kill "$LIBERO_INSTALL_REPO_SCRIPT_PID"' INT
 
 ACTION=""
-CONFIG="$GENTOO_INSTALL_REPO_DIR/gentoo.conf"
+CONFIG="$LIBERO_INSTALL_REPO_DIR/libero.conf"
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 		""|"help"|"--help"|"-help"|"-h")
 			echo "Usage: $0 [opts]... <action>"
-			echo "Performs a minimal gentoo installation. See https://github.com/oddlama/gentoo-install"
+			echo "Performs a minimal libero installation. See https://github.com/oddlama/libero-install"
 			echo "for more information. If the configuration file does not exist, the configurator will"
 			echo "be started instead."
 			echo ""
 			echo "Options:"
 			echo "  -c, --config <CONFIG>         Use the given configuration file instead of the default"
-			echo "                                  location (gentoo.conf). Applies to installation as well"
+			echo "                                  location (libero.conf). Applies to installation as well"
 			echo "                                  as initial configuration in case it doesn't exist."
 			echo ""
 			echo "Actions:"
-			echo "  -i, --install                 Installs gentoo as configured. This is the default mode,"
+			echo "  -i, --install                 Installs libero as configured. This is the default mode,"
 			echo "                                  if the given configuration file exists."
 			echo "  -R, --chroot <DIR> [CMD...]   Chroot into an existing system. The root filesystem"
 			echo "                                  must already be mounted under DIR. All required special"
@@ -73,7 +73,7 @@ while [[ $# -gt 0 ]]; do
 		"-c"|"--config")
 			[[ -f "$2" ]] \
 				|| die "Config file not found: '$2'"
-			CONFIG="$(cd "$ACTUAL_WORKING_DIRECTORY" && realpath --relative-to="$GENTOO_INSTALL_REPO_DIR" "$2" 2>/dev/null)" || die "Could not determine realpath to config"
+			CONFIG="$(cd "$ACTUAL_WORKING_DIRECTORY" && realpath --relative-to="$LIBERO_INSTALL_REPO_DIR" "$2" 2>/dev/null)" || die "Could not determine realpath to config"
 			shift
 			;;
 		"-R"|"--chroot")
@@ -96,7 +96,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Check configuration location
-[[ -z "${CONFIG%%"$GENTOO_INSTALL_REPO_DIR"*}" ]] \
+[[ -z "${CONFIG%%"$LIBERO_INSTALL_REPO_DIR"*}" ]] \
 	|| die "Configuration file must be inside the installation directory. This is needed so it is accessible from within the chroot environment."
 
 if [[ -z "$ACTION" ]]; then
@@ -105,8 +105,8 @@ if [[ -z "$ACTION" ]]; then
 		ACTION="install"
 	else
 		# Default if configuration does not exist: Run configurator, and exit afterwards.
-		echo "You have not created a gentoo.conf. Starting configurator instead of installing."
-		exec "$GENTOO_INSTALL_REPO_DIR/configure" "$CONFIG"
+		echo "You have not created a libero.conf. Starting configurator instead of installing."
+		exec "$LIBERO_INSTALL_REPO_DIR/configure" "$CONFIG"
 	fi
 fi
 
