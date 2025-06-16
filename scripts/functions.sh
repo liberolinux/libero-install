@@ -1,5 +1,5 @@
 # shellcheck source=./scripts/protection.sh
-source "$GENTOO_INSTALL_REPO_DIR/scripts/protection.sh" || exit 1
+source "$LIBERO_INSTALL_REPO_DIR/scripts/protection.sh" || exit 1
 
 
 ################################################
@@ -10,7 +10,6 @@ function sync_time() {
 	if command -v ntpd &> /dev/null; then
 		try ntpd -g -q
 	elif command -v chrony &> /dev/null; then
-		# See https://github.com/oddlama/gentoo-install/pull/122
 		try chronyd -q
 	else
 		# why am I doing this?
@@ -109,8 +108,8 @@ function prepare_installation_environment() {
 }
 
 function check_encryption_key() {
-	if [[ -z "${GENTOO_INSTALL_ENCRYPTION_KEY+set}" ]]; then
-		elog "You have enabled encryption, but haven't specified a key in the environment variable GENTOO_INSTALL_ENCRYPTION_KEY."
+	if [[ -z "${LIBERO_INSTALL_ENCRYPTION_KEY+set}" ]]; then
+		elog "You have enabled encryption, but haven't specified a key in the environment variable LIBERO_INSTALL_ENCRYPTION_KEY."
 		if ask "Do you want to enter an encryption key now?"; then
 			local encryption_key_1
 			local encryption_key_2
@@ -134,13 +133,13 @@ function check_encryption_key() {
 				break
 			done
 
-			export GENTOO_INSTALL_ENCRYPTION_KEY="$encryption_key_1"
+			export LIBERO_INSTALL_ENCRYPTION_KEY="$encryption_key_1"
 		else
-			die "Please export GENTOO_INSTALL_ENCRYPTION_KEY with the desired key."
+			die "Please export LIBERO_INSTALL_ENCRYPTION_KEY with the desired key."
 		fi
 	fi
 
-	[[ ${#GENTOO_INSTALL_ENCRYPTION_KEY} -ge 8 ]] \
+	[[ ${#LIBERO_INSTALL_ENCRYPTION_KEY} -ge 8 ]] \
 		|| die "Your encryption key must be at least 8 characters long."
 }
 
@@ -348,7 +347,7 @@ function disk_create_luks() {
 	cryptsetup luksFormat \
 			--type luks2 \
 			--uuid "$uuid" \
-			--key-file <(echo -n "$GENTOO_INSTALL_ENCRYPTION_KEY") \
+			--key-file <(echo -n "$LIBERO_INSTALL_ENCRYPTION_KEY") \
 			--cipher aes-xts-plain64 \
 			--hash sha512 \
 			--pbkdf argon2id \
@@ -367,7 +366,7 @@ function disk_create_luks() {
 			--header-backup-file "$header_file" \
 		|| die "Could not backup luks header on $device_desc"
 	cryptsetup open --type luks2 \
-			--key-file <(echo -n "$GENTOO_INSTALL_ENCRYPTION_KEY") \
+			--key-file <(echo -n "$LIBERO_INSTALL_ENCRYPTION_KEY") \
 			"$device" "$name" \
 		|| die "Could not open luks encrypted device $device_desc"
 }
@@ -482,7 +481,7 @@ function format_zfs_standard() {
 			"-O" "keylocation=prompt"
 			)
 
-		zfs_stdin="$GENTOO_INSTALL_ENCRYPTION_KEY"
+		zfs_stdin="$LIBERO_INSTALL_ENCRYPTION_KEY"
 	fi
 
 	# dnodesize=legacy might be needed for GRUB2, but auto is preferred for xattr=sa.
@@ -808,19 +807,19 @@ function mount_root() {
 
 function bind_repo_dir() {
 	# Use new location by default
-	export GENTOO_INSTALL_REPO_DIR="$GENTOO_INSTALL_REPO_BIND"
+	export LIBERO_INSTALL_REPO_DIR="$LIBERO_INSTALL_REPO_BIND"
 
 	# Bind the repo dir to a location in /tmp,
 	# so it can be accessed from within the chroot
-	mountpoint -q -- "$GENTOO_INSTALL_REPO_BIND" \
+	mountpoint -q -- "$LIBERO_INSTALL_REPO_BIND" \
 		&& return
 
 	# Mount root device
 	einfo "Bind mounting repo directory"
-	mkdir -p "$GENTOO_INSTALL_REPO_BIND" \
-		|| die "Could not create mountpoint directory '$GENTOO_INSTALL_REPO_BIND'"
-	mount --bind "$GENTOO_INSTALL_REPO_DIR_ORIGINAL" "$GENTOO_INSTALL_REPO_BIND" \
-		|| die "Could not bind mount '$GENTOO_INSTALL_REPO_DIR_ORIGINAL' to '$GENTOO_INSTALL_REPO_BIND'"
+	mkdir -p "$LIBERO_INSTALL_REPO_BIND" \
+		|| die "Could not create mountpoint directory '$LIBERO_INSTALL_REPO_BIND'"
+	mount --bind "$LIBERO_INSTALL_REPO_DIR_ORIGINAL" "$LIBERO_INSTALL_REPO_BIND" \
+		|| die "Could not bind mount '$LIBERO_INSTALL_REPO_DIR_ORIGINAL' to '$LIBERO_INSTALL_REPO_BIND'"
 }
 
 function download_stage3() {
@@ -828,13 +827,13 @@ function download_stage3() {
 		|| die "Could not cd into '$TMP_DIR'"
 
 	local STAGE3_BASENAME_FINAL
-	if [[ ("$GENTOO_ARCH" == "amd64" && "$STAGE3_VARIANT" == *x32*) || ("$GENTOO_ARCH" == "x86" && -n "$GENTOO_SUBARCH") ]]; then
+	if [[ ("$LIBERO_ARCH" == "amd64" && "$STAGE3_VARIANT" == *x32*) || ("$LIBERO_ARCH" == "x86" && -n "$LIBERO_SUBARCH") ]]; then
 		STAGE3_BASENAME_FINAL="$STAGE3_BASENAME_CUSTOM"
 	else
 		STAGE3_BASENAME_FINAL="$STAGE3_BASENAME"
 	fi
 
-	local STAGE3_RELEASES="$GENTOO_MIRROR/releases/$GENTOO_ARCH/autobuilds/current-$STAGE3_BASENAME_FINAL/"
+	local STAGE3_RELEASES="$LIBERO_MIRROR/releases/$LIBERO_ARCH/autobuilds/current-$STAGE3_BASENAME_FINAL/"
 
 	# Download upstream list of files
 	CURRENT_STAGE3="$(download_stdout "$STAGE3_RELEASES")" \
@@ -860,13 +859,13 @@ function download_stage3() {
 		download "$STAGE3_RELEASES/${CURRENT_STAGE3}" "${CURRENT_STAGE3}"
 		download "$STAGE3_RELEASES/${CURRENT_STAGE3}.DIGESTS" "${CURRENT_STAGE3}.DIGESTS"
 
-		# Import gentoo keys
-		einfo "Importing gentoo gpg key"
-		local GENTOO_GPG_KEY="$TMP_DIR/gentoo-keys.gpg"
-		download "https://gentoo.org/.well-known/openpgpkey/hu/wtktzo4gyuhzu8a4z5fdj3fgmr1u6tob?l=releng" "$GENTOO_GPG_KEY" \
-			|| die "Could not retrieve gentoo gpg key"
-		gpg --quiet --import < "$GENTOO_GPG_KEY" \
-			|| die "Could not import gentoo gpg key"
+		# Import libero keys
+		einfo "Importing libero gpg key"
+		local LIBERO_GPG_KEY="$TMP_DIR/libero-keys.gpg"
+		download "https://libero.org/.well-known/openpgpkey/hu/wtktzo4gyuhzu8a4z5fdj3fgmr1u6tob?l=releng" "$LIBERO_GPG_KEY" \
+			|| die "Could not retrieve libero gpg key"
+		gpg --quiet --import < "$LIBERO_GPG_KEY" \
+			|| die "Could not import libero gpg key"
 
 		# Verify DIGESTS signature
 		einfo "Verifying tarball signature"
@@ -920,7 +919,7 @@ function extract_stage3() {
 	maybe_exec 'after_extract_stage3' "$TMP_DIR/$CURRENT_STAGE3" "$ROOT_MOUNTPOINT"
 }
 
-function gentoo_umount() {
+function libero_umount() {
 	if mountpoint -q -- "$ROOT_MOUNTPOINT"; then
 		einfo "Unmounting root filesystem"
 		umount -R -l "$ROOT_MOUNTPOINT" \
@@ -956,10 +955,10 @@ function touch_or_die() {
 
 # $1: root directory
 # $@: command...
-function gentoo_chroot() {
+function libero_chroot() {
 	if [[ $# -eq 1 ]]; then
 		einfo "To later unmount all virtual filesystems, simply use umount -l ${1@Q}"
-		gentoo_chroot "$1" /bin/bash --init-file <(echo 'init_bash')
+		libero_chroot "$1" /bin/bash --init-file <(echo 'init_bash')
 	fi
 
 	[[ ${EXECUTED_IN_CHROOT-false} == "false" ]] \
@@ -1002,7 +1001,7 @@ function gentoo_chroot() {
 	EXECUTED_IN_CHROOT=true \
 		TMP_DIR="$TMP_DIR" \
 		CACHED_LSBLK_OUTPUT="$CACHED_LSBLK_OUTPUT" \
-		exec chroot -- "$chroot_dir" "$GENTOO_INSTALL_REPO_DIR/scripts/dispatch_chroot.sh" "$@" \
+		exec chroot -- "$chroot_dir" "$LIBERO_INSTALL_REPO_DIR/scripts/dispatch_chroot.sh" "$@" \
 			|| die "Failed to chroot into '$chroot_dir'."
 }
 

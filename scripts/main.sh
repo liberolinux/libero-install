@@ -1,5 +1,5 @@
 # shellcheck source=./scripts/protection.sh
-source "$GENTOO_INSTALL_REPO_DIR/scripts/protection.sh" || exit 1
+source "$LIBERO_INSTALL_REPO_DIR/scripts/protection.sh" || exit 1
 
 
 ################################################
@@ -115,7 +115,7 @@ function configure_portage() {
 
 function enable_sshd() {
 	einfo "Installing and enabling sshd"
-	install -m0600 -o root -g root "$GENTOO_INSTALL_REPO_DIR/contrib/sshd_config" /etc/ssh/sshd_config \
+	install -m0600 -o root -g root "$LIBERO_INSTALL_REPO_DIR/contrib/sshd_config" /etc/ssh/sshd_config \
 		|| die "Could not install /etc/ssh/sshd_config"
 	enable_service sshd
 }
@@ -260,7 +260,7 @@ function install_kernel_efi() {
 		for disk in "${raid_members[@]}"; do
 			gptdev="$disk"
 			einfo "Adding EFI boot entry for RAID member: $gptdev"
-			try efibootmgr --verbose --create --disk "$gptdev" --part "$efipartnum" --label "gentoo" --loader '\vmlinuz.efi' --unicode "initrd=\\initramfs.img $(get_cmdline)"
+			try efibootmgr --verbose --create --disk "$gptdev" --part "$efipartnum" --label "libero" --loader '\vmlinuz.efi' --unicode "initrd=\\initramfs.img $(get_cmdline)"
 		done
 	else
 		# Non-RAID case: Create a single EFI boot entry
@@ -270,25 +270,25 @@ function install_kernel_efi() {
 			gptdev="$(resolve_device_by_id "${DISK_ID_PART_TO_GPT_ID[$DISK_ID_EFI]}")" \
 				|| die "Could not resolve device with id=${DISK_ID_PART_TO_GPT_ID[$DISK_ID_EFI]}"
 		fi
-		try efibootmgr --verbose --create --disk "$gptdev" --part "$efipartnum" --label "gentoo" --loader '\vmlinuz.efi' --unicode 'initrd=\initramfs.img'" $(get_cmdline)"
+		try efibootmgr --verbose --create --disk "$gptdev" --part "$efipartnum" --label "libero" --loader '\vmlinuz.efi' --unicode 'initrd=\initramfs.img'" $(get_cmdline)"
 	fi
 
 	# Create script to repeat adding efibootmgr entry
 	cat > "/boot/efi/efibootmgr_add_entry.sh" <<EOF
 #!/bin/bash
 # This is the command that was used to create the efibootmgr entry when the
-# system was installed using gentoo-install.
-efibootmgr --verbose --create --disk "$gptdev" --part "$efipartnum" --label "gentoo" --loader '\\vmlinuz.efi' --unicode 'initrd=\\initramfs.img'" $(get_cmdline)"
+# system was installed using libero-install.
+efibootmgr --verbose --create --disk "$gptdev" --part "$efipartnum" --label "libero" --loader '\\vmlinuz.efi' --unicode 'initrd=\\initramfs.img'" $(get_cmdline)"
 EOF
 }
 
 function generate_syslinux_cfg() {
 	cat <<EOF
-DEFAULT gentoo
+DEFAULT libero
 PROMPT 0
 TIMEOUT 0
 
-LABEL gentoo
+LABEL libero
 	LINUX ../vmlinuz-current
 	APPEND initrd=../initramfs.img $(get_cmdline)
 EOF
@@ -350,7 +350,7 @@ function add_fstab_entry() {
 
 function generate_fstab() {
 	einfo "Generating fstab"
-	install -m0644 -o root -g root "$GENTOO_INSTALL_REPO_DIR/contrib/fstab" /etc/fstab \
+	install -m0644 -o root -g root "$LIBERO_INSTALL_REPO_DIR/contrib/fstab" /etc/fstab \
 		|| die "Could not overwrite /etc/fstab"
 	if [[ $USED_ZFS != "true" && -n $DISK_ID_ROOT_TYPE ]]; then
 		add_fstab_entry "UUID=$(get_blkid_uuid_for_id "$DISK_ID_ROOT")" "/" "$DISK_ID_ROOT_TYPE" "$DISK_ID_ROOT_MOUNT_OPTS" "0 1"
@@ -365,7 +365,7 @@ function generate_fstab() {
 	fi
 }
 
-function main_install_gentoo_in_chroot() {
+function main_install_libero_in_chroot() {
 	[[ $# == 0 ]] || die "Too many arguments"
 
 	maybe_exec 'before_install'
@@ -431,8 +431,8 @@ function main_install_gentoo_in_chroot() {
 [DEFAULT]
 main-repo = gentoo
 
-[gentoo]
-location = /var/db/repos/gentoo
+[libero]
+location = /var/db/repos/libero
 sync-type = git
 sync-uri = $PORTAGE_GIT_MIRROR
 auto-sync = yes
@@ -460,7 +460,7 @@ EOF
 
 	# Install required programs and kernel now, in order to
 	# prevent emerging module before an imminent kernel upgrade
-	try emerge --verbose sys-kernel/dracut sys-kernel/gentoo-kernel-bin app-arch/zstd
+	try emerge --verbose sys-kernel/dracut sys-kernel/libero-kernel-bin app-arch/zstd
 
 	# Install cryptsetup if we used LUKS
 	if [[ $USED_LUKS == "true" ]]; then
@@ -561,18 +561,18 @@ EOF
 		ewarn "Root password cleared, set one as soon as possible!"
 	fi
 
-	# If configured, change to gentoo testing at the last moment.
+	# If configured, change to libero testing at the last moment.
 	# This is to ensure a smooth installation process. You can deal
 	# with the blockers after installation ;)
 	if [[ $USE_PORTAGE_TESTING == "true" ]]; then
-		einfo "Adding ~$GENTOO_ARCH to ACCEPT_KEYWORDS"
-		echo "ACCEPT_KEYWORDS=\"~$GENTOO_ARCH\"" >> /etc/portage/make.conf \
+		einfo "Adding ~$LIBERO_ARCH to ACCEPT_KEYWORDS"
+		echo "ACCEPT_KEYWORDS=\"~$LIBERO_ARCH\"" >> /etc/portage/make.conf \
 			|| die "Could not modify /etc/portage/make.conf"
 	fi
 
 	maybe_exec 'after_install'
 
-	einfo "Gentoo installation complete."
+	einfo "Libero installation complete."
 	[[ $USED_LUKS == "true" ]] \
 		&& einfo "A backup of your luks headers can be found at '$LUKS_HEADER_BACKUP_DIR', in case you want to have a backup."
 	einfo "You may now reboot your system or execute ./install --chroot $ROOT_MOUNTPOINT to enter your system in a chroot."
@@ -582,12 +582,12 @@ EOF
 function main_install() {
 	[[ $# == 0 ]] || die "Too many arguments"
 
-	gentoo_umount
+	libero_umount
 	install_stage3
 
 	[[ $IS_EFI == "true" ]] \
 		&& mount_efivars
-	gentoo_chroot "$ROOT_MOUNTPOINT" "$GENTOO_INSTALL_REPO_BIND/install" __install_gentoo_in_chroot
+	libero_chroot "$ROOT_MOUNTPOINT" "$LIBERO_INSTALL_REPO_BIND/install" __install_libero_in_chroot
 }
 
 function main_chroot() {
@@ -595,5 +595,5 @@ function main_chroot() {
 	mountpoint -q -- "$1" \
 		|| die "'$1' is not a mountpoint"
 
-	gentoo_chroot "$@"
+	libero_chroot "$@"
 }

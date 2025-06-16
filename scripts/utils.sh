@@ -1,5 +1,5 @@
 # shellcheck source=./scripts/protection.sh
-source "$GENTOO_INSTALL_REPO_DIR/scripts/protection.sh" || exit 1
+source "$LIBERO_INSTALL_REPO_DIR/scripts/protection.sh" || exit 1
 
 function elog() {
 	echo "[[1m+[m] $*"
@@ -19,8 +19,8 @@ function eerror() {
 
 function die() {
 	eerror "$*"
-	[[ -v GENTOO_INSTALL_REPO_SCRIPT_PID && $$ -ne $GENTOO_INSTALL_REPO_SCRIPT_PID ]] \
-		&& kill "$GENTOO_INSTALL_REPO_SCRIPT_PID"
+	[[ -v LIBERO_INSTALL_REPO_SCRIPT_PID && $$ -ne $LIBERO_INSTALL_REPO_SCRIPT_PID ]] \
+		&& kill "$LIBERO_INSTALL_REPO_SCRIPT_PID"
 	exit 1
 }
 
