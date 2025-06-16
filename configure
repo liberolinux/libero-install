@@ -183,7 +183,7 @@ ALL_LIBERO_SUBARCHS=("i486" "i686")
 ALL_STAGE3_VARIANTS=(
 	"openrc"                   "openrc                  | Minimal OpenRC base"
 	"systemd"                  "systemd                 | Minimal systemd base (recommended)"
-}
+)
 
 ALL_PARTITIONING_SCHEMES=(
 	"classic_single_disk" "Classic single disk layout (boot/efi, swap?, root)"
