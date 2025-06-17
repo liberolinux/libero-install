@@ -861,7 +861,7 @@ function download_stage3() {
 
 		# Import libero keys
 		einfo "Importing gentoo gpg key"
-		local LIBERO_GPG_KEY="$TMP_DIR/libero-keys.gpg"
+		local LIBERO_GPG_KEY="$TMP_DIR/gentoo-keys.gpg"
 		download "https://gentoo.org/.well-known/openpgpkey/hu/wtktzo4gyuhzu8a4z5fdj3fgmr1u6tob?l=releng" "$LIBERO_GPG_KEY" \
 			|| die "Could not retrieve gentoo gpg key"
 		gpg --quiet --import < "$LIBERO_GPG_KEY" \
