@@ -911,7 +911,7 @@ function extract_stage3() {
 
 	# Extract tarball
 	einfo "Extracting stage3 tarball"
-	tar xpf "$TMP_DIR/$CURRENT_STAGE3" --xattrs --numeric-owner \
+	tar xpf "$TMP_DIR/$CURRENT_STAGE3" --xattrs --numeric-owner --overwrite-dir --keep-old-files \
 		|| die "Error while extracting tarball"
 	cd "$TMP_DIR" \
 		|| die "Could not cd into '$TMP_DIR'"
