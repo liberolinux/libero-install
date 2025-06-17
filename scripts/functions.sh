@@ -901,20 +901,15 @@ function extract_stage3() {
 
 	maybe_exec 'before_extract_stage3' "$TMP_DIR/$CURRENT_STAGE3" "$ROOT_MOUNTPOINT"
 
-	# Go to root directory
-	cd "$ROOT_MOUNTPOINT" \
-		|| die "Could not move to '$ROOT_MOUNTPOINT'"
 	# Ensure the directory is empty
-	find . -mindepth 1 -maxdepth 1 -not -name 'lost+found' \
+	find "$ROOT_MOUNTPOINT" -mindepth 1 -maxdepth 1 -not -name 'lost+found' \
 		| grep -q . \
 		&& die "root directory '$ROOT_MOUNTPOINT' is not empty"
 
 	# Extract tarball
 	einfo "Extracting stage3 tarball"
-	tar xpf "$TMP_DIR/$CURRENT_STAGE3" --xattrs --numeric-owner --overwrite-dir --keep-old-files \
+	tar xpf "$TMP_DIR/$CURRENT_STAGE3" --xattrs --numeric-owner -C "$ROOT_MOUNTPOINT" \
 		|| die "Error while extracting tarball"
-	cd "$TMP_DIR" \
-		|| die "Could not cd into '$TMP_DIR'"
 
 	maybe_exec 'after_extract_stage3' "$TMP_DIR/$CURRENT_STAGE3" "$ROOT_MOUNTPOINT"
 }

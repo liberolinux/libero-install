@@ -12,7 +12,7 @@ TMP_DIR="/tmp/libero-install"
 ROOT_MOUNTPOINT="$TMP_DIR/root"
 # Mountpoint for the script files for access from chroot
 LIBERO_INSTALL_REPO_BIND="$TMP_DIR/bind"
-# Mountpoint for the script files for access from chroot
+# Directory for storing UUIDs
 UUID_STORAGE_DIR="$TMP_DIR/uuids"
 # Backup dir for luks headers
 LUKS_HEADER_BACKUP_DIR="$TMP_DIR/luks-headers"
