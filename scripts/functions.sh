@@ -823,6 +823,8 @@ function bind_repo_dir() {
 }
 
 function download_stage3() {
+	mount_root
+
 	# Use ROOT_MOUNTPOINT as the download directory
 	mkdir -p "$ROOT_MOUNTPOINT" \
 		|| die "Could not create root mountpoint directory '$ROOT_MOUNTPOINT'"
@@ -895,8 +897,6 @@ function download_stage3() {
 }
 
 function extract_stage3() {
-	mount_root
-
 	[[ -n $CURRENT_STAGE3 ]] \
 		|| die "CURRENT_STAGE3 is not set"
 	[[ -e "$ROOT_MOUNTPOINT/$CURRENT_STAGE3" ]] \
