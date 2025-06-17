@@ -823,8 +823,11 @@ function bind_repo_dir() {
 }
 
 function download_stage3() {
-	cd "$TMP_DIR" \
-		|| die "Could not cd into '$TMP_DIR'"
+	# Use ROOT_MOUNTPOINT as the download directory
+	mkdir -p "$ROOT_MOUNTPOINT" \
+		|| die "Could not create root mountpoint directory '$ROOT_MOUNTPOINT'"
+	cd "$ROOT_MOUNTPOINT" \
+		|| die "Could not cd into '$ROOT_MOUNTPOINT'"
 
 	local STAGE3_BASENAME_FINAL
 	if [[ ("$LIBERO_ARCH" == "amd64" && "$STAGE3_VARIANT" == *x32*) || ("$LIBERO_ARCH" == "x86" && -n "$LIBERO_SUBARCH") ]]; then
@@ -846,7 +849,7 @@ function download_stage3() {
 		|| die "Could not parse list of tarballs"
 	# Strip quotes
 	CURRENT_STAGE3="${CURRENT_STAGE3:1:-1}"
-	# File to indiciate successful verification
+	# File to indicate successful verification
 	CURRENT_STAGE3_VERIFIED="${CURRENT_STAGE3}.verified"
 
 	maybe_exec 'before_download_stage3' "$STAGE3_BASENAME_FINAL"
@@ -896,10 +899,10 @@ function extract_stage3() {
 
 	[[ -n $CURRENT_STAGE3 ]] \
 		|| die "CURRENT_STAGE3 is not set"
-	[[ -e "$TMP_DIR/$CURRENT_STAGE3" ]] \
+	[[ -e "$ROOT_MOUNTPOINT/$CURRENT_STAGE3" ]] \
 		|| die "stage3 file does not exist"
 
-	maybe_exec 'before_extract_stage3' "$TMP_DIR/$CURRENT_STAGE3" "$ROOT_MOUNTPOINT"
+	maybe_exec 'before_extract_stage3' "$ROOT_MOUNTPOINT/$CURRENT_STAGE3" "$ROOT_MOUNTPOINT"
 
 	# Ensure the directory is empty
 	find "$ROOT_MOUNTPOINT" -mindepth 1 -maxdepth 1 -not -name 'lost+found' \
@@ -908,10 +911,10 @@ function extract_stage3() {
 
 	# Extract tarball
 	einfo "Extracting stage3 tarball"
-	tar xpf "$TMP_DIR/$CURRENT_STAGE3" --xattrs --numeric-owner -C "$ROOT_MOUNTPOINT" \
+	tar xpf "$ROOT_MOUNTPOINT/$CURRENT_STAGE3" --xattrs-include='*.*' --numeric-owner \
 		|| die "Error while extracting tarball"
 
-	maybe_exec 'after_extract_stage3' "$TMP_DIR/$CURRENT_STAGE3" "$ROOT_MOUNTPOINT"
+	maybe_exec 'after_extract_stage3' "$ROOT_MOUNTPOINT/$CURRENT_STAGE3" "$ROOT_MOUNTPOINT"
 }
 
 function libero_umount() {
