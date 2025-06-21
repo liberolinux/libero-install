@@ -825,11 +825,11 @@ function bind_repo_dir() {
 function download_stage3() {
 	mount_root
 
-	# Use ROOT_MOUNTPOINT as the download directory
-	mkdir -p "$ROOT_MOUNTPOINT" \
-		|| die "Could not create root mountpoint directory '$ROOT_MOUNTPOINT'"
-	cd "$ROOT_MOUNTPOINT" \
-		|| die "Could not cd into '$ROOT_MOUNTPOINT'"
+	# Use TMP_DIR as the download directory
+	mkdir -p "$TMP_DIR" \
+		|| die "Could not create temp directory '$TMP_DIR'"
+	cd "$TMP_DIR" \
+		|| die "Could not cd into '$TMP_DIR'"
 
 	local STAGE3_BASENAME_FINAL
 	if [[ ("$LIBERO_ARCH" == "amd64" && "$STAGE3_VARIANT" == *x32*) || ("$LIBERO_ARCH" == "x86" && -n "$LIBERO_SUBARCH") ]]; then
@@ -899,22 +899,24 @@ function download_stage3() {
 function extract_stage3() {
 	[[ -n $CURRENT_STAGE3 ]] \
 		|| die "CURRENT_STAGE3 is not set"
-	[[ -e "$ROOT_MOUNTPOINT/$CURRENT_STAGE3" ]] \
+	[[ -e "$TMP_DIR/$CURRENT_STAGE3" ]] \
 		|| die "stage3 file does not exist"
 
-	maybe_exec 'before_extract_stage3' "$ROOT_MOUNTPOINT/$CURRENT_STAGE3" "$ROOT_MOUNTPOINT"
+	maybe_exec 'before_extract_stage3' "$TMP_DIR/$CURRENT_STAGE3" "$ROOT_MOUNTPOINT"
 
-	# Ensure the directory is empty
-	find "$ROOT_MOUNTPOINT" -mindepth 1 -maxdepth 1 -not -name 'lost+found' \
-		| grep -q . \
-		&& die "root directory '$ROOT_MOUNTPOINT' is not empty"
+	# Clean the directory if not empty
+	if find "$ROOT_MOUNTPOINT" -mindepth 1 -maxdepth 1 -not -name 'lost+found' | grep -q .; then
+		einfo "Cleaning non-empty root directory '$ROOT_MOUNTPOINT'"
+		find "$ROOT_MOUNTPOINT" -mindepth 1 -maxdepth 1 -not -name 'lost+found' -exec rm -rf {} + \
+			|| die "Could not clean root directory '$ROOT_MOUNTPOINT'"
+	fi
 
 	# Extract tarball
 	einfo "Extracting stage3 tarball"
-	tar xpf "$ROOT_MOUNTPOINT/$CURRENT_STAGE3" --xattrs-include='*.*' --numeric-owner \
+	tar xpf "$TMP_DIR/$CURRENT_STAGE3" --xattrs-include='*.*' --numeric-owner -C "$ROOT_MOUNTPOINT" \
 		|| die "Error while extracting tarball"
 
-	maybe_exec 'after_extract_stage3' "$ROOT_MOUNTPOINT/$CURRENT_STAGE3" "$ROOT_MOUNTPOINT"
+	maybe_exec 'after_extract_stage3' "$TMP_DIR/$CURRENT_STAGE3" "$ROOT_MOUNTPOINT"
 }
 
 function libero_umount() {
