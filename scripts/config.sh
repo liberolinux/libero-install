@@ -9,7 +9,7 @@ source "$LIBERO_INSTALL_REPO_DIR/scripts/protection.sh" || exit 1
 # must reside in /tmp to allow the chrooted system to access the files
 TMP_DIR="/tmp/libero-install"
 # Mountpoint for the new system
-ROOT_MOUNTPOINT="$TMP_DIR/root"
+ROOT_MOUNTPOINT="/mnt"
 # Mountpoint for the script files for access from chroot
 LIBERO_INSTALL_REPO_BIND="$TMP_DIR/bind"
 # Directory for storing UUIDs
