@@ -823,8 +823,6 @@ function bind_repo_dir() {
 }
 
 function download_stage3() {
-	mount_root
-
 	# Use TMP_DIR as the download directory
 	mkdir -p "$TMP_DIR" \
 		|| die "Could not create temp directory '$TMP_DIR'"
@@ -902,19 +900,33 @@ function extract_stage3() {
 	[[ -e "$TMP_DIR/$CURRENT_STAGE3" ]] \
 		|| die "stage3 file does not exist"
 
-	maybe_exec 'before_extract_stage3' "$TMP_DIR/$CURRENT_STAGE3" "$ROOT_MOUNTPOINT"
+	mount_root
 
-	# Clean the directory if not empty
+	maybe_exec 'before_extract_stage3' "$TMP_DIR/$CURRENT_STAGE3" "$ROOT_MOUNTPOINT"
 	if find "$ROOT_MOUNTPOINT" -mindepth 1 -maxdepth 1 -not -name 'lost+found' | grep -q .; then
 		einfo "Cleaning non-empty root directory '$ROOT_MOUNTPOINT'"
 		find "$ROOT_MOUNTPOINT" -mindepth 1 -maxdepth 1 -not -name 'lost+found' -exec rm -rf {} + \
 			|| die "Could not clean root directory '$ROOT_MOUNTPOINT'"
 	fi
 
-	# Extract tarball
-	einfo "Extracting stage3 tarball"
-	tar xpf "$TMP_DIR/$CURRENT_STAGE3" --xattrs-include='*.*' --numeric-owner -C "$ROOT_MOUNTPOINT" \
-		|| die "Error while extracting tarball"
+	# Create temporary extraction directory in TMP_DIR (which has more space)
+	local STAGE3_EXTRACT_DIR="$TMP_DIR/stage3_extract"
+	mkdir -p "$STAGE3_EXTRACT_DIR" \
+		|| die "Could not create stage3 extraction directory '$STAGE3_EXTRACT_DIR'"
+
+	# Extract tarball to temporary directory first
+	einfo "Extracting stage3 tarball to temporary directory"
+	tar xpf "$TMP_DIR/$CURRENT_STAGE3" --xattrs-include='*.*' --numeric-owner -C "$STAGE3_EXTRACT_DIR" \
+		|| die "Error while extracting tarball to temporary directory"
+
+	# Move extracted contents to root mountpoint
+	einfo "Moving extracted files to root mountpoint"
+	find "$STAGE3_EXTRACT_DIR" -mindepth 1 -maxdepth 1 -exec mv {} "$ROOT_MOUNTPOINT/" \; \
+		|| die "Error while moving extracted files to root mountpoint"
+
+	# Clean up temporary extraction directory
+	rm -rf "$STAGE3_EXTRACT_DIR" \
+		|| die "Could not clean up temporary extraction directory"
 
 	maybe_exec 'after_extract_stage3' "$TMP_DIR/$CURRENT_STAGE3" "$ROOT_MOUNTPOINT"
 }
