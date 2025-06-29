@@ -909,13 +909,13 @@ function extract_stage3() {
 			|| die "Could not clean root directory '$ROOT_MOUNTPOINT'"
 	fi
 
-	# Create temporary extraction directory in TMP_DIR (which has more space)
-	local STAGE3_EXTRACT_DIR="$TMP_DIR/stage3_extract"
+	# Create temporary extraction directory on the mounted root filesystem (which has more space than /tmp)
+	local STAGE3_EXTRACT_DIR="$ROOT_MOUNTPOINT/.stage3-extract"
 	mkdir -p "$STAGE3_EXTRACT_DIR" \
 		|| die "Could not create stage3 extraction directory '$STAGE3_EXTRACT_DIR'"
 
 	# Extract tarball to temporary directory first
-	einfo "Extracting stage3 tarball to temporary directory"
+	einfo "Extracting stage3 tarball to temporary directory on target filesystem"
 	tar xpf "$TMP_DIR/$CURRENT_STAGE3" --xattrs-include='*.*' --numeric-owner -C "$STAGE3_EXTRACT_DIR" \
 		|| die "Error while extracting tarball to temporary directory"
 
