@@ -155,13 +155,17 @@ function generate_initramfs() {
 
 	dracut_opts=()
 	if [[ $SYSTEMD == "true" && $SYSTEMD_INITRAMFS_SSHD == "true" ]]; then
-		cd /tmp || die "Could not change into /tmp"
+		# Use disk-based temporary directory for git operations to conserve RAM
+		local git_tmpdir="/var/tmp/dracut-sshd-$$"
+		mkdir -p "$git_tmpdir" || die "Could not create git temporary directory '$git_tmpdir'"
+		cd "$git_tmpdir" || die "Could not change into '$git_tmpdir'"
 		try git clone https://github.com/gsauthof/dracut-sshd
 		try cp -r dracut-sshd/46sshd /usr/lib/dracut/modules.d
 		sed -e 's/^Type=notify/Type=simple/' \
 			-e 's@^\(ExecStart=/usr/sbin/sshd\) -D@\1 -e -D@' \
 			-i /usr/lib/dracut/modules.d/46sshd/sshd.service \
 			|| die "Could not replace sshd options in service file"
+		rm -rf "$git_tmpdir" || die "Could not cleanup git temporary directory '$git_tmpdir'"
 		dracut_opts+=("--install" "/etc/systemd/network/20-wired.network")
 		modules+=("systemd-networkd")
 	fi
@@ -575,6 +579,10 @@ EOF
 	einfo "Libero installation complete."
 	[[ $USED_LUKS == "true" ]] \
 		&& einfo "A backup of your luks headers can be found at '$LUKS_HEADER_BACKUP_DIR', in case you want to have a backup."
+	
+	# Clean up temporary files to free up disk space
+	cleanup_temp_files
+	
 	einfo "You may now reboot your system or execute ./install --chroot $ROOT_MOUNTPOINT to enter your system in a chroot."
 	einfo "Chrooting in this way is always possible in case you need to fix something after rebooting."
 }

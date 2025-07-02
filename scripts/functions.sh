@@ -737,6 +737,56 @@ function summarize_disk_actions() {
 	elog ────────────────────────────────────────────────────────────────────────────────
 }
 
+function check_disk_usage() {
+	local devices=()
+	
+	# Collect all devices that will be formatted
+	local param
+	local current_params=()
+	for param in "${DISK_ACTIONS[@]}"; do
+		if [[ $param == ';' ]]; then
+			# Process collected params
+			if [[ "${current_params[0]}" == "action=format" ]] || [[ "${current_params[0]}" == "action=create_gpt" ]]; then
+				local device_id=""
+				local device_path=""
+				for p in "${current_params[@]}"; do
+					if [[ $p == device=* ]]; then
+						device_path="${p#device=}"
+						devices+=("$device_path")
+					elif [[ $p == id=* ]]; then
+						device_id="${p#id=}"
+						# Try to resolve device by id
+						if device_path="$(resolve_device_by_id "$device_id" 2>/dev/null)"; then
+							devices+=("$device_path")
+						fi
+					fi
+				done
+			fi
+			current_params=()
+		else
+			current_params+=("$param")
+		fi
+	done
+	
+	# Check if any devices contain data
+	local has_data=false
+	for device in "${devices[@]}"; do
+		if [[ -b "$device" ]] && blkid "$device" >/dev/null 2>&1; then
+			has_data=true
+			ewarn "Device $device appears to contain a filesystem or data"
+			# Show filesystem info if available
+			if fs_info=$(blkid -o full "$device" 2>/dev/null); then
+				ewarn "  $fs_info"
+			fi
+		fi
+	done
+	
+	if [[ $has_data == true ]]; then
+		ewarn "One or more devices contain existing data that will be destroyed."
+		einfo "Automatically proceeding with data destruction for installation"
+	fi
+}
+
 function apply_disk_configuration() {
 	summarize_disk_actions
 
@@ -749,6 +799,9 @@ function apply_disk_configuration() {
 		ewarn "not otherwise in use by the system. This includes stopping mdadm arrays"
 		ewarn "and closing opened luks volumes if applicable for all relevant devices."
 		ewarn "Otherwise, automatic partitioning may fail."
+		
+		# Check for existing data on devices
+		check_disk_usage
 	fi
 	ask "Do you really want to apply this disk configuration?" \
 		|| die "Aborted"
@@ -823,11 +876,21 @@ function bind_repo_dir() {
 }
 
 function download_stage3() {
-	# Use TMP_DIR as the download directory
-	mkdir -p "$TMP_DIR" \
-		|| die "Could not create temp directory '$TMP_DIR'"
-	cd "$TMP_DIR" \
-		|| die "Could not cd into '$TMP_DIR'"
+	# Always mount root first and use target disk for downloads to conserve RAM
+	einfo "Mounting root filesystem early for disk-based temporary storage"
+	mount_root
+	
+	# Use target disk for temporary storage instead of RAM-based /tmp
+	local DISK_TMP_DIR="$ROOT_MOUNTPOINT/tmp/libero-install"
+	mkdir -p "$DISK_TMP_DIR" \
+		|| die "Could not create disk-based temp directory '$DISK_TMP_DIR'"
+	cd "$DISK_TMP_DIR" \
+		|| die "Could not cd into '$DISK_TMP_DIR'"
+	
+	# Update TMP_DIR for subsequent operations
+	export TMP_DIR="$DISK_TMP_DIR"
+	export LIBERO_INSTALL_REPO_BIND="$TMP_DIR/bind"
+	einfo "Using disk-based temporary directory: $TMP_DIR"
 
 	local STAGE3_BASENAME_FINAL
 	if [[ ("$LIBERO_ARCH" == "amd64" && "$STAGE3_VARIANT" == *x32*) || ("$LIBERO_ARCH" == "x86" && -n "$LIBERO_SUBARCH") ]]; then
@@ -900,13 +963,34 @@ function extract_stage3() {
 	[[ -e "$TMP_DIR/$CURRENT_STAGE3" ]] \
 		|| die "stage3 file does not exist"
 
-	mount_root
+	# Mount root if not already mounted (for low RAM mode it's already mounted)
+	if ! mountpoint -q -- "$ROOT_MOUNTPOINT"; then
+		mount_root
+	fi
 
 	maybe_exec 'before_extract_stage3' "$TMP_DIR/$CURRENT_STAGE3" "$ROOT_MOUNTPOINT"
-	if find "$ROOT_MOUNTPOINT" -mindepth 1 -maxdepth 1 -not -name 'lost+found' | grep -q .; then
-		einfo "Cleaning non-empty root directory '$ROOT_MOUNTPOINT'"
-		find "$ROOT_MOUNTPOINT" -mindepth 1 -maxdepth 1 -not -name 'lost+found' -exec rm -rf {} + \
-			|| die "Could not clean root directory '$ROOT_MOUNTPOINT'"
+	if find "$ROOT_MOUNTPOINT" -mindepth 1 -maxdepth 1 -not -name 'lost+found' -not -name 'tmp' | grep -q .; then
+		einfo "Root directory '$ROOT_MOUNTPOINT' is not empty"
+		
+		# Show what's in the directory
+		einfo "Contents of root directory:"
+		ls -la "$ROOT_MOUNTPOINT/" | while read -r line; do
+			einfo "  $line"
+		done
+		
+		# Automatically clean root directory for installation
+		einfo "Automatically cleaning root directory for installation"
+		# Clean everything except lost+found and tmp (which contains our temporary files)
+		if ! find "$ROOT_MOUNTPOINT" -mindepth 1 -maxdepth 1 -not -name 'lost+found' -not -name 'tmp' -exec rm -rf {} +; then
+			ewarn "Some files could not be removed. Attempting to continue anyway..."
+			# Try to remove what we can, file by file
+			find "$ROOT_MOUNTPOINT" -mindepth 1 -maxdepth 1 -not -name 'lost+found' -not -name 'tmp' | while read -r item; do
+				if ! rm -rf "$item" 2>/dev/null; then
+					ewarn "Could not remove: $item"
+				fi
+			done
+		fi
+		einfo "Root directory cleaned successfully"
 	fi
 
 	# Create temporary extraction directory on the mounted root filesystem (which has more space than /tmp)
@@ -929,6 +1013,15 @@ function extract_stage3() {
 		|| die "Could not clean up temporary extraction directory"
 
 	maybe_exec 'after_extract_stage3' "$TMP_DIR/$CURRENT_STAGE3" "$ROOT_MOUNTPOINT"
+}
+
+function cleanup_temp_files() {
+	# Clean up temporary files from target disk if they exist
+	if [[ -d "$ROOT_MOUNTPOINT/tmp/libero-install" ]]; then
+		einfo "Cleaning up temporary files from target disk"
+		rm -rf "$ROOT_MOUNTPOINT/tmp/libero-install" \
+			|| ewarn "Could not clean up temporary files at '$ROOT_MOUNTPOINT/tmp/libero-install'"
+	fi
 }
 
 function libero_umount() {
@@ -994,9 +1087,12 @@ function libero_chroot() {
 		mountpoint -q -- "$chroot_dir/run"  || {
 			mount --rbind /run  "$chroot_dir/run" &&
 			mount --make-rslave "$chroot_dir/run"; } || exit 1
-		mountpoint -q -- "$chroot_dir/tmp"  || {
-			mount --rbind /tmp  "$chroot_dir/tmp" &&
-			mount --make-rslave "$chroot_dir/tmp"; } || exit 1
+		
+		# Always use disk-based /tmp (part of target filesystem) instead of bind mounting RAM-based host /tmp
+		# This conserves RAM and works better on low-memory systems and Live CDs
+		mkdir -p "$chroot_dir/tmp" || exit 1
+		chmod 1777 "$chroot_dir/tmp" || exit 1
+		
 		mountpoint -q -- "$chroot_dir/sys"  || {
 			mount --rbind /sys  "$chroot_dir/sys" &&
 			mount --make-rslave "$chroot_dir/sys"; } || exit 1

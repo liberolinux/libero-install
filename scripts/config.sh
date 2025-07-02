@@ -5,9 +5,11 @@ source "$LIBERO_INSTALL_REPO_DIR/scripts/protection.sh" || exit 1
 ################################################
 # Script internal configuration
 
-# The temporary directory for this script,
-# must reside in /tmp to allow the chrooted system to access the files
-TMP_DIR="/tmp/libero-install"
+# The temporary directory for this script
+# Always use disk-based temporary storage to work on low RAM systems and Live CDs
+# This will be set dynamically after root mounting in download_stage3()
+TMP_DIR="/tmp/libero-install"  # Initial fallback, will be updated to use target disk
+einfo "Using low RAM mode: temporary files will be stored on target disk to conserve memory"
 # Mountpoint for the new system
 ROOT_MOUNTPOINT="/mnt"
 # Mountpoint for the script files for access from chroot
