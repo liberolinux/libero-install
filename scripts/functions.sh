@@ -995,7 +995,7 @@ function extract_stage3() {
 
 	# Extract tarball directly to root mountpoint to save space
 	einfo "Extracting stage3 tarball directly to root mountpoint"
-	tar xpf "$TMP_DIR/$CURRENT_STAGE3" --xattrs-include='*.*' --numeric-owner -C "$ROOT_MOUNTPOINT" \
+	tar xpf "$TMP_DIR/$CURRENT_STAGE3" --xattrs-include='*.*' --numeric-owner --no-same-owner --delay-directory-restore -C "$ROOT_MOUNTPOINT" \
 		|| die "Error while extracting tarball"
 
 	maybe_exec 'after_extract_stage3' "$TMP_DIR/$CURRENT_STAGE3" "$ROOT_MOUNTPOINT"
