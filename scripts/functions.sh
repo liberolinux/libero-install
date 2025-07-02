@@ -993,24 +993,10 @@ function extract_stage3() {
 		einfo "Root directory cleaned successfully"
 	fi
 
-	# Create temporary extraction directory on the mounted root filesystem (which has more space than /tmp)
-	local STAGE3_EXTRACT_DIR="$ROOT_MOUNTPOINT/.stage3-extract"
-	mkdir -p "$STAGE3_EXTRACT_DIR" \
-		|| die "Could not create stage3 extraction directory '$STAGE3_EXTRACT_DIR'"
-
-	# Extract tarball to temporary directory first
-	einfo "Extracting stage3 tarball to temporary directory on target filesystem"
-	tar xpf "$TMP_DIR/$CURRENT_STAGE3" --xattrs-include='*.*' --numeric-owner -C "$STAGE3_EXTRACT_DIR" \
-		|| die "Error while extracting tarball to temporary directory"
-
-	# Move extracted contents to root mountpoint
-	einfo "Moving extracted files to root mountpoint"
-	find "$STAGE3_EXTRACT_DIR" -mindepth 1 -maxdepth 1 -exec mv {} "$ROOT_MOUNTPOINT/" \; \
-		|| die "Error while moving extracted files to root mountpoint"
-
-	# Clean up temporary extraction directory
-	rm -rf "$STAGE3_EXTRACT_DIR" \
-		|| die "Could not clean up temporary extraction directory"
+	# Extract tarball directly to root mountpoint to save space
+	einfo "Extracting stage3 tarball directly to root mountpoint"
+	tar xpf "$TMP_DIR/$CURRENT_STAGE3" --xattrs-include='*.*' --numeric-owner -C "$ROOT_MOUNTPOINT" \
+		|| die "Error while extracting tarball"
 
 	maybe_exec 'after_extract_stage3' "$TMP_DIR/$CURRENT_STAGE3" "$ROOT_MOUNTPOINT"
 }
