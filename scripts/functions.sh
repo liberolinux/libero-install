@@ -995,8 +995,53 @@ function extract_stage3() {
 
 	# Extract tarball directly to root mountpoint to save space
 	einfo "Extracting stage3 tarball directly to root mountpoint"
-	tar xpf "$TMP_DIR/$CURRENT_STAGE3" --xattrs-include='*.*' --numeric-owner --no-same-owner --delay-directory-restore -C "$ROOT_MOUNTPOINT" \
-		|| die "Error while extracting tarball"
+	
+	# Check and prepare the extraction directory
+	if [[ ! -d "$ROOT_MOUNTPOINT" ]]; then
+		mkdir -p "$ROOT_MOUNTPOINT" || die "Could not create root mountpoint directory"
+	fi
+	
+	# Ensure the directory has proper permissions
+	chmod 755 "$ROOT_MOUNTPOINT" || die "Could not set permissions on root mountpoint"
+	
+	# Check available space before extraction
+	local available_space=$(df --output=avail "$ROOT_MOUNTPOINT" | tail -n1)
+	local archive_size=$(stat -c%s "$TMP_DIR/$CURRENT_STAGE3")
+	einfo "Available space: ${available_space}KB, archive size: $((archive_size / 1024))KB"
+	
+	# Extract with more robust options and better error handling
+	if ! tar xpf "$TMP_DIR/$CURRENT_STAGE3" \
+		--xattrs-include='*.*' \
+		--numeric-owner \
+		--no-same-owner \
+		--delay-directory-restore \
+		--keep-directory-symlink \
+		--overwrite \
+		-C "$ROOT_MOUNTPOINT" 2>&1; then
+		
+		eerror "Failed to extract stage3 tarball"
+		eerror "This could be due to:"
+		eerror "1. Insufficient disk space"
+		eerror "2. Permission issues"
+		eerror "3. Corrupted tarball"
+		eerror "4. Filesystem limitations"
+		
+		# Try to get more information about the failure
+		einfo "Checking filesystem status:"
+		df -h "$ROOT_MOUNTPOINT" || true
+		df -i "$ROOT_MOUNTPOINT" || true
+		
+		die "Error while extracting tarball"
+	fi
+	
+	# Verify extraction was successful
+	if [[ ! -f "$ROOT_MOUNTPOINT/etc/portage/make.conf" ]] && [[ ! -f "$ROOT_MOUNTPOINT/etc/make.conf" ]]; then
+		ewarn "Extraction appears incomplete - no make.conf found"
+		einfo "Contents of ROOT_MOUNTPOINT:"
+		ls -la "$ROOT_MOUNTPOINT/" || true
+	else
+		einfo "Stage3 extraction completed successfully"
+	fi
 
 	maybe_exec 'after_extract_stage3' "$TMP_DIR/$CURRENT_STAGE3" "$ROOT_MOUNTPOINT"
 }
