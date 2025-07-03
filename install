@@ -87,8 +87,8 @@ while [[ $# -gt 0 ]]; do
 			[[ -z $ACTION ]] || die "Multiple actions given"
 			ACTION="install"
 			;;
-		"__install_gentoo_in_chroot")
-			ACTION="__install_gentoo_in_chroot"
+		"__install_libero_in_chroot")
+			ACTION="__install_libero_in_chroot"
 			;;
 		*) die "Invalid option '$1'" ;;
 	esac
@@ -131,6 +131,6 @@ mkdir_or_die 0755 "$TMP_DIR"
 case "$ACTION" in
 	"chroot")  main_chroot "$CHROOT_DIR" "$@" ;;
 	"install") main_install "$@" ;;
-	"__install_gentoo_in_chroot") main_install_gentoo_in_chroot "$@" ;;
+	"__install_libero_in_chroot") main_install_libero_in_chroot "$@" ;;
 	*) die "Invalid action '$ACTION'" ;;
 esac
