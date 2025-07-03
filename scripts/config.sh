@@ -12,8 +12,6 @@ TMP_DIR="/tmp/libero-install"  # Initial fallback, will be updated to use target
 einfo "Using low RAM mode: temporary files will be stored on target disk to conserve memory"
 # Mountpoint for the new system
 ROOT_MOUNTPOINT="/mnt"
-# Mountpoint for the script files for access from chroot
-LIBERO_INSTALL_REPO_BIND="$TMP_DIR/bind"
 # Directory for storing UUIDs
 UUID_STORAGE_DIR="$TMP_DIR/uuids"
 # Backup dir for luks headers

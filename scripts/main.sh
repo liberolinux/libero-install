@@ -115,7 +115,7 @@ function configure_portage() {
 
 function enable_sshd() {
 	einfo "Installing and enabling sshd"
-	install -m0600 -o root -g root "$LIBERO_INSTALL_REPO_DIR/contrib/sshd_config" /etc/ssh/sshd_config \
+	install -m0600 -o root -g root "/tmp/libero-install/contrib/sshd_config" /etc/ssh/sshd_config \
 		|| die "Could not install /etc/ssh/sshd_config"
 	enable_service sshd
 }
@@ -354,7 +354,7 @@ function add_fstab_entry() {
 
 function generate_fstab() {
 	einfo "Generating fstab"
-	install -m0644 -o root -g root "$LIBERO_INSTALL_REPO_DIR/contrib/fstab" /etc/fstab \
+	install -m0644 -o root -g root "/tmp/libero-install/contrib/fstab" /etc/fstab \
 		|| die "Could not overwrite /etc/fstab"
 	if [[ $USED_ZFS != "true" && -n $DISK_ID_ROOT_TYPE ]]; then
 		add_fstab_entry "UUID=$(get_blkid_uuid_for_id "$DISK_ID_ROOT")" "/" "$DISK_ID_ROOT_TYPE" "$DISK_ID_ROOT_MOUNT_OPTS" "0 1"
@@ -595,7 +595,7 @@ function main_install() {
 
 	[[ $IS_EFI == "true" ]] \
 		&& mount_efivars
-	libero_chroot "$ROOT_MOUNTPOINT" "$LIBERO_INSTALL_REPO_BIND/install" __install_libero_in_chroot
+	libero_chroot "$ROOT_MOUNTPOINT" "/tmp/libero-install/install" __install_libero_in_chroot
 }
 
 function main_chroot() {

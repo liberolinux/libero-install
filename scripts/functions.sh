@@ -858,21 +858,40 @@ function mount_root() {
 	fi
 }
 
-function bind_repo_dir() {
-	# Use new location by default
-	export LIBERO_INSTALL_REPO_DIR="$LIBERO_INSTALL_REPO_BIND"
-
-	# Bind the repo dir to a location in /tmp,
-	# so it can be accessed from within the chroot
-	mountpoint -q -- "$LIBERO_INSTALL_REPO_BIND" \
-		&& return
-
-	# Mount root device
-	einfo "Bind mounting repo directory"
-	mkdir -p "$LIBERO_INSTALL_REPO_BIND" \
-		|| die "Could not create mountpoint directory '$LIBERO_INSTALL_REPO_BIND'"
-	mount --bind "$LIBERO_INSTALL_REPO_DIR_ORIGINAL" "$LIBERO_INSTALL_REPO_BIND" \
-		|| die "Could not bind mount '$LIBERO_INSTALL_REPO_DIR_ORIGINAL' to '$LIBERO_INSTALL_REPO_BIND'"
+function copy_scripts_to_chroot() {
+	local chroot_dir="$1"
+	local scripts_dest="$chroot_dir/tmp/libero-install/scripts"
+	
+	# Create destination directory in chroot
+	einfo "Copying scripts to chroot environment"
+	mkdir -p "$scripts_dest" \
+		|| die "Could not create scripts directory '$scripts_dest'"
+	
+	# Copy all scripts from the original repository to chroot
+	cp -r "$LIBERO_INSTALL_REPO_DIR_ORIGINAL/scripts/"* "$scripts_dest/" \
+		|| die "Could not copy scripts to '$scripts_dest'"
+	
+	# Copy the main install script as well
+	cp "$LIBERO_INSTALL_REPO_DIR_ORIGINAL/install" "$chroot_dir/tmp/libero-install/" \
+		|| die "Could not copy install script to chroot"
+	chmod +x "$chroot_dir/tmp/libero-install/install" \
+		|| die "Could not make install script executable"
+	
+	# Make all scripts executable
+	find "$scripts_dest" -type f -name "*.sh" -exec chmod +x {} \; \
+		|| die "Could not make scripts executable"
+	
+	# Copy other necessary files (contrib, etc.) if they exist
+	if [[ -d "$LIBERO_INSTALL_REPO_DIR_ORIGINAL/contrib" ]]; then
+		local contrib_dest="$chroot_dir/tmp/libero-install/contrib"
+		mkdir -p "$contrib_dest" \
+			|| die "Could not create contrib directory '$contrib_dest'"
+		cp -r "$LIBERO_INSTALL_REPO_DIR_ORIGINAL/contrib/"* "$contrib_dest/" \
+			|| die "Could not copy contrib files to '$contrib_dest'"
+	fi
+	
+	# Set the repo directory path for use inside chroot
+	export LIBERO_INSTALL_REPO_DIR="/tmp/libero-install"
 }
 
 function download_stage3() {
@@ -889,7 +908,6 @@ function download_stage3() {
 	
 	# Update TMP_DIR for subsequent operations
 	export TMP_DIR="$DISK_TMP_DIR"
-	export LIBERO_INSTALL_REPO_BIND="$TMP_DIR/bind"
 	einfo "Using disk-based temporary directory: $TMP_DIR"
 
 	local STAGE3_BASENAME_FINAL
@@ -1103,8 +1121,8 @@ function libero_chroot() {
 	local chroot_dir="$1"
 	shift
 
-	# Bind repo directory to tmp
-	bind_repo_dir
+	# Copy scripts to chroot environment instead of bind mounting
+	copy_scripts_to_chroot "$chroot_dir"
 
 	# Copy resolv.conf
 	einfo "Preparing chroot environment"
@@ -1140,7 +1158,7 @@ function libero_chroot() {
 	EXECUTED_IN_CHROOT=true \
 		TMP_DIR="$TMP_DIR" \
 		CACHED_LSBLK_OUTPUT="$CACHED_LSBLK_OUTPUT" \
-		exec chroot -- "$chroot_dir" "$LIBERO_INSTALL_REPO_DIR/scripts/dispatch_chroot.sh" "$@" \
+		exec chroot -- "$chroot_dir" "/tmp/libero-install/scripts/dispatch_chroot.sh" "$@" \
 			|| die "Failed to chroot into '$chroot_dir'."
 }
 
