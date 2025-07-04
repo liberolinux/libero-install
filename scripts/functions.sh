@@ -890,6 +890,12 @@ function copy_scripts_to_chroot() {
 			|| die "Could not copy contrib files to '$contrib_dest'"
 	fi
 	
+	# Copy libero.conf if it exists
+	if [[ -f "$LIBERO_INSTALL_REPO_DIR_ORIGINAL/libero.conf" ]]; then
+		cp "$LIBERO_INSTALL_REPO_DIR_ORIGINAL/libero.conf" "$chroot_dir/tmp/libero-install/" \
+			|| die "Could not copy libero.conf to chroot"
+	fi
+	
 	# Set the repo directory path for use inside chroot
 	export LIBERO_INSTALL_REPO_DIR="/tmp/libero-install"
 }
