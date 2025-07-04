@@ -154,17 +154,37 @@ function get_device_by_blkid_field() {
 	local dev
 	dev="$(blkid -c /dev/null -o export -t "$blkid_field=$field_value")" \
 		|| die "Error while executing blkid to find $blkid_field=$field_value"
+	[[ -n "$dev" ]] \
+		|| die "blkid returned empty result for $blkid_field=$field_value"
 	dev="$(grep DEVNAME <<< "$dev")" \
 		|| die "Could not find DEVNAME=... in blkid output"
 	dev="${dev#"DEVNAME="}"
+	[[ -n "$dev" ]] \
+		|| die "Device path is empty for $blkid_field=$field_value"
 	echo -n "$dev"
 }
 
 function get_device_by_partuuid() {
-	if [[ -e "/dev/disk/by-partuuid/$1" ]]; then
-		echo -n "/dev/disk/by-partuuid/$1"
+	local partuuid="$1"
+	local symlink_path="/dev/disk/by-partuuid/$partuuid"
+	
+	if [[ -e "$symlink_path" ]]; then
+		echo -n "$symlink_path"
 	else
-		get_device_by_blkid_field 'PARTUUID' "$1"
+		# Try to wait for the device to appear
+		local timeout=10
+		local count=0
+		while [[ $count -lt $timeout ]]; do
+			sleep 1
+			count=$((count + 1))
+			if [[ -e "$symlink_path" ]]; then
+				echo -n "$symlink_path"
+				return 0
+			fi
+		done
+		
+		# If symlink doesn't exist, try blkid as fallback
+		get_device_by_blkid_field 'PARTUUID' "$partuuid"
 	fi
 }
 
