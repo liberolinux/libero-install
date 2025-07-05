@@ -267,9 +267,20 @@ function shorten_device() {
 # Return matching device from /dev/disk/by-id/ if possible,
 # otherwise return the parameter unchanged.
 function canonicalize_device() {
-	given_dev="$(realpath "$1")"
+	local given_dev
+	# Check if input is valid before calling realpath
+	if [[ -z "$1" || "$1" == "." ]]; then
+		echo -n "$1"
+		return 0
+	fi
+	
+	given_dev="$(realpath "$1" 2>/dev/null)" || {
+		echo -n "$1"
+		return 0
+	}
+	
 	for dev in /dev/disk/by-id/*; do
-		if [[ "$(realpath "$dev")" == "$given_dev" ]]; then
+		if [[ "$(realpath "$dev" 2>/dev/null)" == "$given_dev" ]]; then
 			echo -n "$dev"
 			return 0
 		fi
