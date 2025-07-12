@@ -893,7 +893,7 @@ function mount_by_id() {
 
 	while [[ $retry_count -lt $max_retries ]]; do
 		# Resolve device with better error handling
-		if dev="$(resolve_device_by_id "$id" 2>/dev/null)"; then
+		if dev="$(resolve_device_by_id "$id")"; then
 			# Verify the device exists and is a block device
 			if [[ -b "$dev" ]]; then
 				# Try mounting with timeout and better error handling

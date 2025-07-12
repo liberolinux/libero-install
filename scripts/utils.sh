@@ -183,7 +183,7 @@ function get_blkid_field_by_device() {
 		
 		retry_count=$((retry_count + 1))
 		if [[ $retry_count -lt $max_retries ]]; then
-			einfo "Retrying blkid for $device (attempt $((retry_count + 1))/$max_retries)"
+			einfo "Retrying blkid for $device (attempt $((retry_count + 1))/$max_retries)" >&2
 			sleep 2
 		fi
 	done
@@ -288,12 +288,13 @@ function get_device_by_blkid_field() {
 		
 		retry_count=$((retry_count + 1))
 		if [[ $retry_count -lt $max_retries ]]; then
-			einfo "Retrying device lookup for $blkid_field=$field_value (attempt $((retry_count + 1))/$max_retries)"
+			einfo "Retrying device lookup for $blkid_field=$field_value (attempt $((retry_count + 1))/$max_retries)" >&2
 			sleep 2
 		fi
 	done
 	
-	die "Could not find device with $blkid_field=$field_value after $max_retries attempts"
+	# Return error code instead of dying - let caller handle the error
+	return 1
 }
 
 function get_device_by_partuuid() {
@@ -325,8 +326,15 @@ function get_device_by_partuuid() {
 		fi
 	done
 	
-	# Method 3: Use improved blkid fallback
-	get_device_by_blkid_field 'PARTUUID' "$partuuid"
+	# Method 3: Use improved blkid fallback with error handling
+	local device
+	if device="$(get_device_by_blkid_field 'PARTUUID' "$partuuid" 2>/dev/null)"; then
+		echo -n "$device"
+		return 0
+	fi
+	
+	# If all methods fail, return empty (let caller handle the error)
+	return 1
 }
 
 function get_device_by_uuid() {
@@ -358,8 +366,15 @@ function get_device_by_uuid() {
 		fi
 	done
 	
-	# Method 3: Use improved blkid fallback
-	get_device_by_blkid_field 'UUID' "$uuid"
+	# Method 3: Use improved blkid fallback with error handling
+	local device
+	if device="$(get_device_by_blkid_field 'UUID' "$uuid" 2>/dev/null)"; then
+		echo -n "$device"
+		return 0
+	fi
+	
+	# If all methods fail, return empty (let caller handle the error)
+	return 1
 }
 
 function cache_lsblk_output() {
@@ -487,17 +502,36 @@ function resolve_device_by_id() {
 	local type="${DISK_ID_TO_RESOLVABLE[$id]%%:*}"
 	local arg="${DISK_ID_TO_RESOLVABLE[$id]#*:}"
 
-	local dev
+	local dev=""
 	case "$type" in
-		'partuuid') dev=$(get_device_by_partuuid   "$arg") ;;
-		'ptuuid')   dev=$(get_device_by_ptuuid     "$arg") ;;
-		'uuid')     dev=$(get_device_by_uuid       "$arg") ;;
-		'mdadm')    dev=$(get_device_by_mdadm_uuid "$arg") ;;
+		'partuuid') 
+			if ! dev=$(get_device_by_partuuid "$arg"); then
+				die "Cannot resolve PARTUUID=$arg to device"
+			fi
+			;;
+		'ptuuid')   
+			if ! dev=$(get_device_by_ptuuid "$arg"); then
+				die "Cannot resolve PTUUID=$arg to device"
+			fi
+			;;
+		'uuid')     
+			if ! dev=$(get_device_by_uuid "$arg"); then
+				die "Cannot resolve UUID=$arg to device"
+			fi
+			;;
+		'mdadm')    
+			if ! dev=$(get_device_by_mdadm_uuid "$arg"); then
+				die "Cannot resolve MDADM UUID=$arg to device"
+			fi
+			;;
 		'luks')     dev=$(get_device_by_luks_name  "$arg") ;;
 		'device')   dev="$arg" ;;
 		*) die "Cannot resolve '$type:$arg' to device (unknown type)"
 	esac
 
+	# Validate that we got a device
+	[[ -n "$dev" ]] || die "Device resolution returned empty result for '$type:$arg'"
+	
 	canonicalize_device "$dev"
 }
 
