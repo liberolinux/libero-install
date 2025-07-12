@@ -331,14 +331,66 @@ function install_kernel_bios() {
 	try dd bs=440 conv=notrunc count=1 if=/usr/share/syslinux/gptmbr.bin of="$gptdev"
 }
 
+function install_kernel_bios_root_bootable() {
+	try emerge --verbose sys-boot/syslinux
+
+	# Link kernel to known name in /boot (no separate /boot/bios partition)
+	local kernel_file
+	kernel_file="$(find "/boot" \( -name "vmlinuz-*" -or -name 'kernel-*' \) -printf '%f\n' | sort -V | tail -n 1)" \
+		|| die "Could not list newest kernel file"
+
+	try cp "/boot/$kernel_file" "/boot/vmlinuz-current"
+
+	# Generate initramfs in /boot
+	generate_initramfs "/boot/initramfs.img"
+
+	# Install syslinux to root partition
+	einfo "Installing syslinux to root partition"
+	local rootdev
+	rootdev="$(resolve_device_by_id "$DISK_ID_ROOT")" \
+		|| die "Could not resolve device with id=$DISK_ID_ROOT"
+	
+	# Create syslinux directory in /boot
+	mkdir_or_die 0700 "/boot/syslinux"
+	
+	# Install syslinux to the root partition
+	try syslinux --directory boot/syslinux --install "$rootdev"
+
+	# Create syslinux.cfg for root partition boot
+	generate_syslinux_cfg_root_bootable > /boot/syslinux/syslinux.cfg \
+		|| die "Could save generated syslinux.cfg"
+
+	# Install syslinux MBR record
+	einfo "Copying syslinux MBR record"
+	local gptdev
+	gptdev="$(resolve_device_by_id "${DISK_ID_PART_TO_GPT_ID[$DISK_ID_ROOT]}")" \
+		|| die "Could not resolve device with id=${DISK_ID_PART_TO_GPT_ID[$DISK_ID_ROOT]}"
+	try dd bs=440 conv=notrunc count=1 if=/usr/share/syslinux/gptmbr.bin of="$gptdev"
+}
+
+function generate_syslinux_cfg_root_bootable() {
+	cat <<EOF
+DEFAULT libero
+PROMPT 0
+TIMEOUT 0
+
+LABEL libero
+	LINUX vmlinuz-current
+	APPEND initrd=initramfs.img $(get_cmdline)
+EOF
+}
+
 function install_kernel() {
 	# Install vanilla kernel
 	einfo "Installing vanilla kernel and related tools"
 
 	if [[ $IS_EFI == "true" ]]; then
 		install_kernel_efi
-	else
+	elif [[ -v "DISK_ID_BIOS" ]]; then
 		install_kernel_bios
+	else
+		# No separate BIOS partition, install directly to root
+		install_kernel_bios_root_bootable
 	fi
 
 	einfo "Installing linux-firmware"
@@ -361,9 +413,10 @@ function generate_fstab() {
 	fi
 	if [[ $IS_EFI == "true" ]]; then
 		add_fstab_entry "UUID=$(get_blkid_uuid_for_id "$DISK_ID_EFI")" "/boot/efi" "vfat" "defaults,noatime,fmask=0177,dmask=0077,noexec,nodev,nosuid,discard" "0 2"
-	else
+	elif [[ -v "DISK_ID_BIOS" ]]; then
 		add_fstab_entry "UUID=$(get_blkid_uuid_for_id "$DISK_ID_BIOS")" "/boot/bios" "vfat" "defaults,noatime,fmask=0177,dmask=0077,noexec,nodev,nosuid,discard" "0 2"
 	fi
+	# No fstab entry needed for root-bootable BIOS layout
 	if [[ -v "DISK_ID_SWAP" ]]; then
 		add_fstab_entry "UUID=$(get_blkid_uuid_for_id "$DISK_ID_SWAP")" "none" "swap" "defaults,discard" "0 0"
 	fi
@@ -395,10 +448,13 @@ function main_install_libero_in_chroot() {
 		mount_efivars
 		einfo "Mounting efi partition"
 		mount_by_id "$DISK_ID_EFI" "/boot/efi"
-	else
+	elif [[ -v "DISK_ID_BIOS" ]]; then
 		# Mount bios partition
 		einfo "Mounting bios partition"
 		mount_by_id "$DISK_ID_BIOS" "/boot/bios"
+	else
+		# No separate BIOS partition - kernel will be installed directly to root /boot
+		einfo "Using root partition for boot (no separate BIOS partition)"
 	fi
 
 	# Configure basic system things like timezone, locale, ...

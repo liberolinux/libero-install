@@ -637,6 +637,41 @@ function disk_format_btrfs() {
 	init_btrfs "${devices[0]}" "btrfs array ($devices_desc)"
 }
 
+function disk_mark_bootable() {
+	local id="${arguments[id]}"
+	if [[ ${disk_action_summarize_only-false} == "true" ]]; then
+		add_summary_entry "${arguments[id]}" "__bootable__${arguments[id]}" "bootable" "(flag)" ""
+		return 0
+	fi
+
+	local device
+	device="$(resolve_device_by_id "$id")" \
+		|| die "Could not resolve device with id=$id"
+
+	einfo "Marking $device ($id) as bootable"
+	
+	# Set the legacy BIOS bootable flag on the partition
+	# This requires getting the partition number and parent device
+	local partnum=""
+	local parent_device=""
+	
+	# Extract partition number from device path
+	if [[ "$device" =~ ^/dev/([a-z]+)([0-9]+)$ ]]; then
+		parent_device="/dev/${BASH_REMATCH[1]}"
+		partnum="${BASH_REMATCH[2]}"
+	elif [[ "$device" =~ ^/dev/nvme[0-9]+n[0-9]+p([0-9]+)$ ]]; then
+		parent_device="${device%p*}"
+		partnum="${BASH_REMATCH[1]}"
+	else
+		die "Could not determine partition number for device '$device'"
+	fi
+	
+	# Use sgdisk to set the legacy BIOS bootable flag (attribute 2)
+	sgdisk --attributes="$partnum:set:2" "$parent_device" >/dev/null \
+		|| die "Could not set bootable flag on partition $partnum of '$parent_device'"
+	partprobe "$parent_device"
+}
+
 function apply_disk_action() {
 	unset known_arguments
 	unset arguments; declare -A arguments; parse_arguments "$@"
@@ -650,6 +685,7 @@ function apply_disk_action() {
 		'format')            disk_format           ;;
 		'format_zfs')        disk_format_zfs       ;;
 		'format_btrfs')      disk_format_btrfs     ;;
+		'mark_bootable')     disk_mark_bootable    ;;
 		*) echo "Ignoring invalid action: ${arguments[action]}" ;;
 	esac
 }

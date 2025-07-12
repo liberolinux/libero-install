@@ -639,3 +639,55 @@ function create_btrfs_centric_layout() {
 function create_btrfs_raid_layout() {
 	die "'create_btrfs_raid_layout' is deprecated, please use 'create_btrfs_centric_layout' instead. It is fully option-compatible to the old version."
 }
+
+# Single disk, 2 partitions (swap, root) - root is bootable under BIOS mode
+# Parameters:
+#   swap=<size>           Create a swap partition with given size, or no swap at all if set to false.
+#   luks=[true|false]     Encrypt root partition. Defaults to false if not given.
+#   root_fs=[ext4|btrfs]  Root filesystem. Defaults to ext4 if not given.
+function create_classic_single_disk_layout_root_bootable_bios() {
+	local known_arguments=('+swap' '?luks' '?root_fs')
+	local extra_arguments=()
+	declare -A arguments; parse_arguments "$@"
+
+	[[ ${#extra_arguments[@]} -eq 1 ]] \
+		|| die_trace 1 "Expected exactly one positional argument (the device)"
+	local device="${extra_arguments[0]}"
+	local size_swap="${arguments[swap]}"
+	local use_luks="${arguments[luks]:-false}"
+	local root_fs="${arguments[root_fs]:-ext4}"
+
+	create_gpt new_id=gpt device="$device"
+	[[ $size_swap != "false" ]] \
+		&& create_partition new_id=part_swap    id=gpt size="$size_swap" type=swap
+	create_partition new_id=part_root    id=gpt size=remaining    type=linux
+
+	local root_id="part_root"
+	if [[ "$use_luks" == "true" ]]; then
+		create_luks new_id=part_luks_root name="root" id=part_root
+		root_id="part_luks_root"
+	fi
+
+	[[ $size_swap != "false" ]] \
+		&& format id=part_swap type=swap label=swap
+	format id="$root_id" type="$root_fs" label=root
+
+	# Mark root partition as bootable by setting the legacy BIOS bootable flag
+	# This will be handled in the disk action processing
+	DISK_ACTIONS+=("action=mark_bootable" "id=part_root" ";")
+
+	# No separate BIOS partition - root will be bootable
+	[[ $size_swap != "false" ]] \
+		&& DISK_ID_SWAP=part_swap
+	DISK_ID_ROOT="$root_id"
+
+	if [[ $root_fs == "btrfs" ]]; then
+		DISK_ID_ROOT_TYPE="btrfs"
+		DISK_ID_ROOT_MOUNT_OPTS="defaults,noatime,compress-force=zstd,subvol=/root"
+	elif [[ $root_fs == "ext4" ]]; then
+		DISK_ID_ROOT_TYPE="ext4"
+		DISK_ID_ROOT_MOUNT_OPTS="defaults,noatime,errors=remount-ro,discard"
+	else
+		die "Unsupported root filesystem type"
+	fi
+}

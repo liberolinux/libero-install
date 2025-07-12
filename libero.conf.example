@@ -25,7 +25,11 @@ function format_zfs_custom() {
 }
 
 function disk_configuration() {
-	create_classic_single_disk_layout swap=8GiB type=efi luks=true root_fs=ext4 /dev/sdX
+	# Option 1: Standard single disk layout with separate BIOS partition
+	#create_classic_single_disk_layout swap=8GiB type=bios luks=true root_fs=ext4 /dev/sdX
+	
+	# Option 2: Single disk layout with root bootable under BIOS (no separate BIOS partition)
+	create_classic_single_disk_layout_root_bootable_bios swap=8GiB luks=true root_fs=ext4 /dev/sdX
 
 	# 1. create_classic_single_disk_layout
 	#
@@ -109,6 +113,19 @@ function disk_configuration() {
 	#   raid_type=[raid0|raid1]  Select raid type. Defaults to raid0.
 	#create_btrfs_centric_layout swap=8GiB luks=false raid_type=raid0 /dev/sd{X,Y}
 	#create_btrfs_centric_layout swap=8GiB luks=true /dev/sdX
+	
+	# 6. create_classic_single_disk_layout_root_bootable_bios
+	#
+	# This layout creates a BIOS-bootable system without a separate BIOS partition.
+	# The root partition is marked as bootable and syslinux is installed directly to it.
+	# This saves space by not requiring a separate 1GB BIOS partition.
+	#
+	# Parameters:
+	#   swap=<size>           Create a swap partition with given size, or no swap
+	#                         at all if set to false.
+	#   luks=[true|false]     Encrypt root partition. Defaults to false if not given.
+	#   root_fs=[ext4|btrfs]  Root filesystem. Defaults to ext4 if not given.
+	#create_classic_single_disk_layout_root_bootable_bios swap=8GiB luks=true root_fs=ext4 /dev/sdX
 }
 
 
