@@ -70,21 +70,58 @@ function preprocess_config() {
 	check_config
 }
 
+function check_installation_environment() {
+	# Check if running as root (required for low-memory installations)
+	if [[ $EUID -ne 0 ]]; then
+		ewarn "Not running as root. Some disk operations may fail."
+		ewarn "For best results with memory-constrained systems, run as root."
+	fi
+	
+	# Check available memory
+	local total_mem_kb
+	total_mem_kb="$(awk '/MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo "0")"
+	local total_mem_mb=$((total_mem_kb / 1024))
+	
+	if [[ $total_mem_mb -lt 2048 ]]; then
+		einfo "Detected low memory system: ${total_mem_mb}MB available"
+		einfo "Enabling disk-based temporary storage for installation"
+		export LIBERO_LOW_MEMORY_MODE=true
+	else
+		einfo "Available memory: ${total_mem_mb}MB"
+	fi
+	
+	# Check for block device access
+	if [[ ! -r /proc/partitions ]]; then
+		ewarn "Cannot read /proc/partitions - block device detection may be limited"
+	fi
+	
+	# Ensure udev is running for device management
+	if ! pgrep -f "udevd\|systemd-udevd" >/dev/null 2>&1; then
+		ewarn "udev daemon not detected - device symlinks may not be available"
+	fi
+}
+
 function prepare_installation_environment() {
 	maybe_exec 'before_prepare_environment'
 
 	einfo "Preparing installation environment"
+	
+	# Check system environment first
+	check_installation_environment
 
 	local wanted_programs=(
+		blkid
 		gpg
 		hwclock
 		lsblk
 		ntpd
 		partprobe
 		python3
+		realpath
 		"?rhash"
 		sha512sum
 		sgdisk
+		timeout
 		uuidgen
 		wget
 	)
@@ -835,19 +872,73 @@ function mount_by_id() {
 	local dev
 	local id="$1"
 	local mountpoint="$2"
+	local retry_count=0
+	local max_retries=3
+
+	# Validate input parameters
+	[[ -n "$id" ]] || die "mount_by_id: id parameter is required"
+	[[ -n "$mountpoint" ]] || die "mount_by_id: mountpoint parameter is required"
 
 	# Skip if already mounted
-	mountpoint -q -- "$mountpoint" \
-		&& return
+	if mountpoint -q -- "$mountpoint" 2>/dev/null; then
+		einfo "Device with id=$id already mounted at '$mountpoint'"
+		return 0
+	fi
 
-	# Mount device
+	# Create mountpoint directory with proper error handling
 	einfo "Mounting device with id=$id to '$mountpoint'"
-	mkdir -p "$mountpoint" \
-		|| die "Could not create mountpoint directory '$mountpoint'"
-	dev="$(resolve_device_by_id "$id")" \
-		|| die "Could not resolve device with id=$id"
-	mount "$dev" "$mountpoint" \
-		|| die "Could not mount device '$dev'"
+	if ! mkdir -p "$mountpoint" 2>/dev/null; then
+		die "Could not create mountpoint directory '$mountpoint'"
+	fi
+
+	while [[ $retry_count -lt $max_retries ]]; do
+		# Resolve device with better error handling
+		if dev="$(resolve_device_by_id "$id" 2>/dev/null)"; then
+			# Verify the device exists and is a block device
+			if [[ -b "$dev" ]]; then
+				# Try mounting with timeout and better error handling
+				einfo "Attempting to mount '$dev' to '$mountpoint' (attempt $((retry_count + 1))/$max_retries)"
+				
+				# Check if the device is already mounted elsewhere
+				if mount | grep -q "^$dev "; then
+					local existing_mount
+					existing_mount="$(mount | grep "^$dev " | awk '{print $3}' | head -1)"
+					ewarn "Device '$dev' is already mounted at '$existing_mount'"
+					if [[ "$existing_mount" == "$mountpoint" ]]; then
+						return 0
+					fi
+				fi
+				
+				# Attempt the mount
+				if timeout 30 mount "$dev" "$mountpoint" 2>/dev/null; then
+					einfo "Successfully mounted '$dev' to '$mountpoint'"
+					return 0
+				else
+					ewarn "Mount attempt failed for '$dev' to '$mountpoint'"
+				fi
+			else
+				ewarn "Resolved device '$dev' is not a valid block device"
+			fi
+		else
+			ewarn "Could not resolve device with id=$id"
+		fi
+		
+		retry_count=$((retry_count + 1))
+		if [[ $retry_count -lt $max_retries ]]; then
+			einfo "Retrying mount operation (attempt $((retry_count + 1))/$max_retries)"
+			sleep 3
+			# Force udev to settle and refresh device information
+			if type udevadm &>/dev/null; then
+				udevadm settle &>/dev/null || true
+			fi
+			# Force partition table re-read
+			if type partprobe &>/dev/null; then
+				partprobe &>/dev/null || true
+			fi
+		fi
+	done
+
+	die "Could not mount device with id=$id to '$mountpoint' after $max_retries attempts"
 }
 
 function mount_root() {
