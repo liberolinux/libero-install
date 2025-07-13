@@ -945,8 +945,42 @@ function mount_by_id() {
 					fi
 				fi
 				
-				# Attempt the mount
-				if timeout 30 mount "$dev" "$mountpoint" 2>/dev/null; then
+				# Detect filesystem type and use appropriate mount options
+				local fstype
+				if fstype="$(get_blkid_field_by_device 'TYPE' "$dev" 2>/dev/null)"; then
+					einfo "Detected filesystem type: $fstype"
+					case "$fstype" in
+						vfat|fat32|fat16|fat12)
+							# Use specific options for FAT filesystems to ensure proper mounting
+							if timeout 30 mount -t vfat -o defaults,noatime,fmask=0177,dmask=0077,noexec,nodev,nosuid "$dev" "$mountpoint" 2>/dev/null; then
+								einfo "Successfully mounted FAT filesystem '$dev' to '$mountpoint'"
+								return 0
+							else
+								ewarn "Failed to mount FAT filesystem '$dev' to '$mountpoint'"
+							fi
+							;;
+						ext4|ext3|ext2)
+							# Use specific options for ext filesystems
+							if timeout 30 mount -t "$fstype" "$dev" "$mountpoint" 2>/dev/null; then
+								einfo "Successfully mounted ext filesystem '$dev' to '$mountpoint'"
+								return 0
+							else
+								ewarn "Failed to mount ext filesystem '$dev' to '$mountpoint'"
+							fi
+							;;
+						*)
+							# For other filesystems, use standard mount
+							if timeout 30 mount "$dev" "$mountpoint" 2>/dev/null; then
+								einfo "Successfully mounted '$dev' to '$mountpoint'"
+								return 0
+							else
+								ewarn "Failed to mount '$dev' to '$mountpoint'"
+							fi
+							;;
+					esac
+				else
+					# Fallback: try standard mount without filesystem detection
+					if timeout 30 mount "$dev" "$mountpoint" 2>/dev/null; then
 					einfo "Successfully mounted '$dev' to '$mountpoint'"
 					return 0
 				else
