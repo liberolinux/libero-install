@@ -981,10 +981,11 @@ function mount_by_id() {
 				else
 					# Fallback: try standard mount without filesystem detection
 					if timeout 30 mount "$dev" "$mountpoint" 2>/dev/null; then
-					einfo "Successfully mounted '$dev' to '$mountpoint'"
-					return 0
-				else
-					ewarn "Mount attempt failed for '$dev' to '$mountpoint'"
+						einfo "Successfully mounted '$dev' to '$mountpoint'"
+						return 0
+					else
+						ewarn "Mount attempt failed for '$dev' to '$mountpoint'"
+					fi
 				fi
 			else
 				ewarn "Resolved device '$dev' is not a valid block device"
