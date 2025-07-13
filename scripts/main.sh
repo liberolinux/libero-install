@@ -1,5 +1,7 @@
 # shellcheck source=./scripts/protection.sh
 source "$LIBERO_INSTALL_REPO_DIR/scripts/protection.sh" || exit 1
+# shellcheck source=./scripts/functions.sh
+source "$LIBERO_INSTALL_REPO_DIR/scripts/functions.sh" || exit 1
 
 
 ################################################
