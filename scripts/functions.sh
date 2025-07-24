@@ -915,6 +915,12 @@ function mount_by_id() {
 	[[ -n "$id" ]] || die "mount_by_id: id parameter is required"
 	[[ -n "$mountpoint" ]] || die "mount_by_id: mountpoint parameter is required"
 
+	# Skip mounting BIOS partitions as they contain raw boot code, not filesystems
+	if [[ "$id" == "$DISK_ID_BIOS" ]]; then
+		einfo "Skipping mount of BIOS partition (id=$id) - contains boot code, not a filesystem"
+		return 0
+	fi
+
 	# Skip if already mounted
 	if mountpoint -q -- "$mountpoint" 2>/dev/null; then
 		einfo "Device with id=$id already mounted at '$mountpoint'"
