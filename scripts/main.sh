@@ -522,7 +522,7 @@ EOF
 
 	# Install required programs and kernel now, in order to
 	# prevent emerging module before an imminent kernel upgrade
-	try emerge --verbose sys-kernel/dracut sys-kernel/libero-kernel-bin app-arch/zstd
+	try emerge --verbose sys-kernel/dracut sys-kernel/gentoo-kernel-bin app-arch/zstd
 
 	# Install cryptsetup if we used LUKS
 	if [[ $USED_LUKS == "true" ]]; then
