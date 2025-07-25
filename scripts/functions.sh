@@ -1343,3 +1343,60 @@ function enable_service() {
 		try rc-update add "$1" default
 	fi
 }
+
+function diagnose_locale_issues() {
+	local locale_to_check="${1:-$LOCALE}"
+	
+	eerror "Diagnosing locale configuration issues for: $locale_to_check"
+	
+	# Check if locale-gen was run and succeeded
+	einfo "Checking if locales were generated..."
+	if [[ -f /etc/locale.gen ]]; then
+		einfo "Contents of /etc/locale.gen:"
+		cat /etc/locale.gen | sed 's/^/  /'
+	else
+		ewarn "/etc/locale.gen does not exist"
+	fi
+	
+	# Check available locales
+	einfo "Available locales on system:"
+	if locale -a 2>/dev/null; then
+		: # Success, output already shown
+	else
+		ewarn "locale -a command failed"
+	fi
+	
+	# Check current locale environment
+	einfo "Current locale environment:"
+	locale 2>/dev/null | sed 's/^/  /' || ewarn "locale command failed"
+	
+	# Check locale configuration files
+	einfo "Checking locale configuration files..."
+	for file in /etc/locale.conf /etc/env.d/02locale; do
+		if [[ -f "$file" ]]; then
+			einfo "Contents of $file:"
+			cat "$file" | sed 's/^/  /'
+		else
+			einfo "$file does not exist"
+		fi
+	done
+	
+	# Check if eselect locale is available and working
+	einfo "Checking eselect locale..."
+	if command -v eselect >/dev/null 2>&1; then
+		if eselect locale list 2>/dev/null; then
+			: # Success, output already shown
+		else
+			ewarn "eselect locale list failed"
+		fi
+	else
+		ewarn "eselect command not available"
+	fi
+	
+	# Suggest fixes
+	einfo "Suggested fixes:"
+	einfo "1. Ensure LOCALES contains entries like 'en_US.UTF-8 UTF-8'"
+	einfo "2. Ensure LOCALE matches a generated locale (use 'locale -a' to check)"
+	einfo "3. For minimal systems, consider using 'C.UTF-8' as the locale"
+	einfo "4. After fixing LOCALES, re-run 'locale-gen' manually"
+}

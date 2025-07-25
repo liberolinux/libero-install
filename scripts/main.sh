@@ -7,6 +7,72 @@ source "$LIBERO_INSTALL_REPO_DIR/scripts/functions.sh" || exit 1
 ################################################
 # Functions
 
+function validate_locale_configuration() {
+	local locale_var="$1"
+	local locales_var="$2"
+	
+	# Basic validation
+	if [[ -z "$locale_var" ]]; then
+		ewarn "LOCALE is empty or undefined"
+		return 1
+	fi
+	
+	# Check if the locale is properly formatted
+	if [[ ! "$locale_var" =~ ^[A-Za-z_]+(\.[A-Za-z0-9-]+)?$ ]]; then
+		ewarn "LOCALE '$locale_var' appears to have invalid format"
+		ewarn "Expected format: language_COUNTRY.encoding (e.g., en_US.UTF-8)"
+	fi
+	
+	# Check if LOCALES contains corresponding entry for non-musl systems
+	if [[ $MUSL != "true" ]] && [[ -n "$locales_var" ]]; then
+		# Extract the locale name without encoding for comparison
+		local locale_base="${locale_var%.*}"
+		local locale_encoding="${locale_var##*.}"
+		
+		# Check if there's a matching entry in LOCALES
+		if ! echo "$locales_var" | grep -q "^${locale_base}\."; then
+			ewarn "LOCALE '$locale_var' does not appear to have a corresponding entry in LOCALES"
+			ewarn "You may need to add something like '${locale_base}.UTF-8 UTF-8' to LOCALES"
+		fi
+	fi
+	
+	return 0
+}
+
+function auto_fix_locale_configuration() {
+	# Auto-fix common locale configuration issues
+	einfo "Attempting to auto-fix locale configuration..."
+	
+	# If LOCALE is set but LOCALES is empty, try to add a basic entry
+	if [[ -n "$LOCALE" ]] && [[ -z "$LOCALES" ]] && [[ "$LOCALE" != "C" ]] && [[ "$LOCALE" != "POSIX" ]] && [[ "$LOCALE" != "C.UTF-8" ]]; then
+		ewarn "LOCALE is set to '$LOCALE' but LOCALES is empty"
+		einfo "Auto-adding locale entry to LOCALES"
+		
+		# Try to construct a reasonable LOCALES entry
+		if [[ "$LOCALE" =~ ^([a-z_]+)\.UTF-?8$ ]]; then
+			local base_locale="${BASH_REMATCH[1]}"
+			LOCALES="${base_locale}.UTF-8 UTF-8"
+			einfo "Added '${base_locale}.UTF-8 UTF-8' to LOCALES"
+		elif [[ "$LOCALE" =~ ^([a-z_]+)\.(.+)$ ]]; then
+			local base_locale="${BASH_REMATCH[1]}"
+			local encoding="${BASH_REMATCH[2]}"
+			LOCALES="${base_locale}.${encoding^^} ${encoding^^}"
+			einfo "Added '${base_locale}.${encoding^^} ${encoding^^}' to LOCALES"
+		else
+			ewarn "Could not auto-fix LOCALES for locale '$LOCALE'"
+		fi
+	fi
+	
+	# Ensure C.UTF-8 is always available as fallback
+	if [[ -z "$LOCALES" ]]; then
+		einfo "LOCALES is empty, adding minimal C.UTF-8 locale"
+		LOCALES="C.UTF-8 UTF-8"
+	elif ! echo "$LOCALES" | grep -q "C\.UTF-8"; then
+		einfo "Adding C.UTF-8 as fallback locale"
+		LOCALES="$LOCALES"$'\n'"C.UTF-8 UTF-8"
+	fi
+}
+
 function install_stage3() {
 	prepare_installation_environment
 	apply_disk_configuration
@@ -15,6 +81,13 @@ function install_stage3() {
 }
 
 function configure_base_system() {
+	# Validate locale configuration before proceeding
+	einfo "Validating locale configuration..."
+	validate_locale_configuration "$LOCALE" "$LOCALES"
+	
+	# Auto-fix common issues
+	auto_fix_locale_configuration
+	
 	if [[ $MUSL == "true" ]]; then
 		einfo "Installing musl-locales"
 		try emerge --verbose sys-apps/musl-locales
@@ -22,10 +95,39 @@ function configure_base_system() {
 			|| die "Could not write to /etc/env.d/00local"
 	else
 		einfo "Generating locales"
+		# Ensure LOCALES is not empty and contains at least C.UTF-8
+		if [[ -z "$LOCALES" ]]; then
+			ewarn "LOCALES is empty, adding default C.UTF-8 locale"
+			LOCALES="C.UTF-8 UTF-8"
+		fi
+		
+		# Write locales to locale.gen
 		echo "$LOCALES" > /etc/locale.gen \
 			|| die "Could not write /etc/locale.gen"
-		locale-gen \
-			|| die "Could not generate locales"
+		
+		# Generate locales with better error handling
+		einfo "Running locale-gen..."
+		if ! locale-gen; then
+			eerror "Failed to generate locales. Contents of /etc/locale.gen:"
+			cat /etc/locale.gen || true
+			eerror "Calling diagnostic function..."
+			diagnose_locale_issues
+			die "Could not generate locales"
+		fi
+		
+		# Verify that locales were generated successfully
+		einfo "Verifying generated locales..."
+		if ! locale -a >/dev/null 2>&1; then
+			ewarn "locale -a command failed, but continuing anyway"
+		else
+			local available_locales
+			available_locales="$(locale -a 2>/dev/null || echo "")"
+			einfo "Available locales after generation:"
+			echo "$available_locales" | head -10 | sed 's/^/  /'
+			if [[ $(echo "$available_locales" | wc -l) -gt 10 ]]; then
+				einfo "  ... and $(($(echo "$available_locales" | wc -l) - 10)) more"
+			fi
+		fi
 	fi
 
 	if [[ $SYSTEMD == "true" ]]; then
@@ -45,8 +147,21 @@ function configure_base_system() {
 
 		# Set locale
 		einfo "Selecting locale"
+		# Validate locale format and availability
+		if [[ -z "$LOCALE" ]]; then
+			ewarn "LOCALE is empty, using default C.UTF-8"
+			LOCALE="C.UTF-8"
+		fi
+		
+		einfo "Setting LANG=$LOCALE in /etc/locale.conf"
 		echo "LANG=$LOCALE" > /etc/locale.conf \
 			|| die "Could not write /etc/locale.conf"
+		
+		# Verify the locale setting
+		if [[ -f /etc/locale.conf ]]; then
+			einfo "Contents of /etc/locale.conf:"
+			cat /etc/locale.conf | sed 's/^/  /'
+		fi
 
 		einfo "Selecting timezone"
 		ln -sfn "../usr/share/zoneinfo/$TIMEZONE" /etc/localtime \
@@ -79,11 +194,100 @@ function configure_base_system() {
 
 		# Set locale
 		einfo "Selecting locale"
-		try eselect locale set "$LOCALE"
+		# Validate locale format and availability
+		if [[ -z "$LOCALE" ]]; then
+			ewarn "LOCALE is empty, using default C.UTF-8"
+			LOCALE="C.UTF-8"
+		fi
+		
+		# Check if locale is available before setting it
+		local available_locales
+		if available_locales="$(locale -a 2>/dev/null)"; then
+			if ! echo "$available_locales" | grep -Fxq "$LOCALE"; then
+				ewarn "Requested locale '$LOCALE' not found in available locales"
+				einfo "Available locales:"
+				echo "$available_locales" | head -5 | sed 's/^/  /'
+				if [[ $(echo "$available_locales" | wc -l) -gt 5 ]]; then
+					einfo "  ... and $(($(echo "$available_locales" | wc -l) - 5)) more"
+				fi
+				
+				# Try to find a close match or fallback
+				local fallback_locale=""
+				if echo "$available_locales" | grep -Fq "C.UTF-8"; then
+					fallback_locale="C.UTF-8"
+				elif echo "$available_locales" | grep -Fq "C.utf8"; then
+					fallback_locale="C.utf8"
+				elif echo "$available_locales" | grep -Fq "POSIX"; then
+					fallback_locale="POSIX"
+				elif echo "$available_locales" | grep -Fq "C"; then
+					fallback_locale="C"
+				fi
+				
+				if [[ -n "$fallback_locale" ]]; then
+					ewarn "Using fallback locale: $fallback_locale"
+					LOCALE="$fallback_locale"
+				else
+					ewarn "No suitable fallback locale found, attempting to use '$LOCALE' anyway"
+				fi
+			fi
+		else
+			ewarn "Could not get list of available locales, proceeding with '$LOCALE'"
+		fi
+		
+		einfo "Setting locale to '$LOCALE' using eselect"
+		if ! eselect locale set "$LOCALE"; then
+			eerror "Failed to set locale '$LOCALE' using eselect"
+			diagnose_locale_issues "$LOCALE"
+			einfo "Attempting alternative locale selection methods..."
+			
+			# Try manual configuration as fallback
+			einfo "Trying manual locale configuration..."
+			if [[ -f /etc/env.d/02locale ]]; then
+				rm -f /etc/env.d/02locale
+			fi
+			echo "LANG=\"$LOCALE\"" > /etc/env.d/02locale \
+				|| die "Could not write /etc/env.d/02locale"
+			
+			# Also ensure locale.conf exists for systemd compatibility
+			echo "LANG=$LOCALE" > /etc/locale.conf \
+				|| die "Could not write /etc/locale.conf"
+			
+			ewarn "Used manual locale configuration as fallback"
+		else
+			einfo "Successfully set locale using eselect"
+		fi
+		
+		# Verify the locale setting
+		einfo "Verifying locale configuration..."
+		if [[ -f /etc/env.d/02locale ]]; then
+			einfo "Contents of /etc/env.d/02locale:"
+			cat /etc/env.d/02locale | sed 's/^/  /'
+		fi
 	fi
 
-	# Update environment
+	# Update environment after locale changes
+	einfo "Updating environment after locale configuration"
 	env_update
+
+	# Final verification of locale setting (works for both systemd and OpenRC)
+	einfo "Final locale verification..."
+	if [[ $SYSTEMD == "true" ]]; then
+		if [[ -f /etc/locale.conf ]] && grep -q "LANG=" /etc/locale.conf; then
+			local configured_locale
+			configured_locale="$(grep "LANG=" /etc/locale.conf | cut -d= -f2)"
+			einfo "Locale configured in /etc/locale.conf: $configured_locale"
+		else
+			ewarn "No locale configuration found in /etc/locale.conf"
+		fi
+	else
+		if [[ -f /etc/env.d/02locale ]] && grep -q "LANG=" /etc/env.d/02locale; then
+			local configured_locale
+			configured_locale="$(grep "LANG=" /etc/env.d/02locale | cut -d= -f2 | tr -d '"')"
+			einfo "Locale configured in /etc/env.d/02locale: $configured_locale"
+		else
+			ewarn "No locale configuration found in /etc/env.d/02locale"
+		fi
+	fi
 }
 
 function configure_portage() {

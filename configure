@@ -1295,7 +1295,33 @@ function LOCALE_menu()  {
 		"$LOCALE" \
 		"${LOCALE_A[@]}"
 	then
-		LOCALE="$dialog_out"
+		local new_locale="$dialog_out"
+		
+		# Validate that the selected locale has a corresponding entry in LOCALES
+		if [[ -n "$LOCALES" ]] && [[ "$new_locale" != "C" ]] && [[ "$new_locale" != "POSIX" ]]; then
+			local locale_base="${new_locale%.*}"
+			local found_match=false
+			
+			# Check if there's a matching entry in LOCALES
+			local IFS=$'\n'
+			for locale_entry in $LOCALES; do
+				if [[ "$locale_entry" =~ ^${locale_base}\. ]]; then
+					found_match=true
+					break
+				fi
+			done
+			
+			if [[ "$found_match" != "true" ]]; then
+				dialog --title "Locale Warning" --yesno \
+					"Warning: The selected locale '$new_locale' does not appear to have a corresponding entry in the LOCALES list.\n\nFor proper locale support, you should add an entry like '${locale_base}.UTF-8 UTF-8' to the LOCALES list.\n\nDo you want to proceed anyway?" \
+					12 70
+				if [[ $? -ne 0 ]]; then
+					return 0  # Return to menu without changing
+				fi
+			fi
+		fi
+		
+		LOCALE="$new_locale"
 		UNSAVED_CHANGES=true
 	else
 		# Return to menu
@@ -1584,8 +1610,68 @@ function ADDITIONAL_PACKAGES_menu()  {
 ################################################
 # Menu functions
 
+function validate_configuration() {
+	local errors=()
+	local warnings=()
+	
+	# Validate locale configuration
+	if [[ -n "$LOCALE" ]] && [[ "$LOCALE" != "C" ]] && [[ "$LOCALE" != "POSIX" ]] && [[ "$LOCALE" != "C.UTF-8" ]]; then
+		if [[ -n "$LOCALES" ]]; then
+			local locale_base="${LOCALE%.*}"
+			local found_match=false
+			
+			# Check if there's a matching entry in LOCALES
+			local IFS=$'\n'
+			for locale_entry in $LOCALES; do
+				if [[ "$locale_entry" =~ ^${locale_base}\. ]]; then
+					found_match=true
+					break
+				fi
+			done
+			
+			if [[ "$found_match" != "true" ]]; then
+				warnings+=("Selected locale '$LOCALE' does not have a corresponding entry in LOCALES. Consider adding '${locale_base}.UTF-8 UTF-8' to LOCALES for proper locale support.")
+			fi
+		else
+			warnings+=("LOCALE is set to '$LOCALE' but LOCALES is empty. You may need to add locale entries to LOCALES for proper locale support.")
+		fi
+	fi
+	
+	# Display warnings if any
+	if [[ ${#warnings[@]} -gt 0 ]]; then
+		local warning_text="Configuration warnings found:\n\n"
+		for warning in "${warnings[@]}"; do
+			warning_text+="• $warning\n\n"
+		done
+		warning_text+="Do you want to continue saving anyway?"
+		
+		if ! dialog --title "Configuration Warnings" --yesno "$warning_text" 15 70; then
+			return 1
+		fi
+	fi
+	
+	# Display errors if any
+	if [[ ${#errors[@]} -gt 0 ]]; then
+		local error_text="Configuration errors found:\n\n"
+		for error in "${errors[@]}"; do
+			error_text+="• $error\n\n"
+		done
+		error_text+="Please fix these errors before saving."
+		
+		dialog --title "Configuration Errors" --msgbox "$error_text" 15 70
+		return 1
+	fi
+	
+	return 0
+}
+
 # $1: filename
 function save() {
+	# Validate configuration before saving
+	if ! validate_configuration; then
+		return 1
+	fi
+	
 	if [[ "$KEYMAP_INITRAMFS_OTHER" == "false" ]]; then
 		KEYMAP_INITRAMFS="$KEYMAP"
 	fi
