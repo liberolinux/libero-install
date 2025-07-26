@@ -313,7 +313,7 @@ function create_classic_single_disk_layout() {
 
 	   create_gpt new_id=gpt device="$device"
 	   # Create root ext4 partition first, with boot flag
-	   create_partition new_id=part_root id=gpt size=remaining type=linux boot_flag=true
+	   create_partition new_id=part_root id=gpt size=remaining type=linux
 	   # Then swap partition if requested
 	   [[ $size_swap != "false" ]] \
 			   && create_partition new_id=part_swap id=gpt size="$size_swap" type=swap
