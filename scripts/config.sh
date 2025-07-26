@@ -306,35 +306,34 @@ function create_classic_single_disk_layout() {
 		|| die_trace 1 "Expected exactly one positional argument (the device)"
 	local device="${extra_arguments[0]}"
 	local size_swap="${arguments[swap]}"
-	local type="${arguments[type]:-efi}"
+	   # Default to no BIOS partition, ext4 root as first partition with boot flag, then swap
+	   local type="${arguments[type]:-none}"
 	local use_luks="${arguments[luks]:-false}"
 	local root_fs="${arguments[root_fs]:-ext4}"
 
-	create_gpt new_id=gpt device="$device"
-	create_partition new_id="part_$type" id=gpt size=1GiB       type="$type"
-	[[ $size_swap != "false" ]] \
-		&& create_partition new_id=part_swap    id=gpt size="$size_swap" type=swap
-	create_partition new_id=part_root    id=gpt size=remaining    type=linux
+	   create_gpt new_id=gpt device="$device"
+	   # Create root ext4 partition first, with boot flag
+	   create_partition new_id=part_root id=gpt size=remaining type=linux boot_flag=true
+	   # Then swap partition if requested
+	   [[ $size_swap != "false" ]] \
+			   && create_partition new_id=part_swap id=gpt size="$size_swap" type=swap
 
-	local root_id="part_root"
-	if [[ "$use_luks" == "true" ]]; then
-		create_luks new_id=part_luks_root name="root" id=part_root
-		root_id="part_luks_root"
-	fi
+	   local root_id="part_root"
+	   if [[ "$use_luks" == "true" ]]; then
+			   create_luks new_id=part_luks_root name="root" id=part_root
+			   root_id="part_luks_root"
+	   fi
 
-	format id="part_$type" type="$type" label="$type"
-	[[ $size_swap != "false" ]] \
-		&& format id=part_swap type=swap label=swap
-	format id="$root_id" type="$root_fs" label=root
+	   [[ $size_swap != "false" ]] \
+			   && format id=part_swap type=swap label=swap
+	   format id="$root_id" type="$root_fs" label=root
 
-	if [[ $type == "efi" ]]; then
-		DISK_ID_EFI="part_$type"
-	else
-		DISK_ID_BIOS="part_$type"
-	fi
-	[[ $size_swap != "false" ]] \
-		&& DISK_ID_SWAP=part_swap
-	DISK_ID_ROOT="$root_id"
+	   # No BIOS or EFI partition by default
+	   DISK_ID_BIOS=""
+	   DISK_ID_EFI=""
+	   [[ $size_swap != "false" ]] \
+			   && DISK_ID_SWAP=part_swap
+	   DISK_ID_ROOT="$root_id"
 
 	if [[ $root_fs == "btrfs" ]]; then
 		DISK_ID_ROOT_TYPE="btrfs"
