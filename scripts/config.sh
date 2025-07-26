@@ -312,11 +312,11 @@ function create_classic_single_disk_layout() {
 	local root_fs="${arguments[root_fs]:-ext4}"
 
 	   create_gpt new_id=gpt device="$device"
-	   # Create root ext4 partition first, with boot flag
-	   create_partition new_id=part_root id=gpt size=remaining type=linux
-	   # Then swap partition if requested
+	   # Create swap partition first if requested
 	   [[ $size_swap != "false" ]] \
 			   && create_partition new_id=part_swap id=gpt size="$size_swap" type=swap
+	   # Then root ext4 partition with boot flag
+	   create_partition new_id=part_root id=gpt size=remaining type=linux
 
 	   local root_id="part_root"
 	   if [[ "$use_luks" == "true" ]]; then
