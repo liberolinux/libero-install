@@ -50,8 +50,10 @@ function check_config() {
 			   fi
 	   fi
 
-	[[ -v "DISK_ID_BIOS" ]] && [[ ! -v "DISK_ID_TO_UUID[$DISK_ID_BIOS]" ]] \
-		&& die "Missing uuid for DISK_ID_BIOS, have you made sure it is used?"
+	   if [[ -v "DISK_ID_BIOS" && -n "$DISK_ID_BIOS" ]]; then
+			   [[ ! -v "DISK_ID_TO_UUID[$DISK_ID_BIOS]" ]] \
+					   && die "Missing uuid for DISK_ID_BIOS, have you made sure it is used?"
+	   fi
 	[[ -v "DISK_ID_EFI" ]] && [[ ! -v "DISK_ID_TO_UUID[$DISK_ID_EFI]" ]] \
 		&& die "Missing uuid for DISK_ID_EFI, have you made sure it is used?"
 	[[ -v "DISK_ID_SWAP" ]] && [[ ! -v "DISK_ID_TO_UUID[$DISK_ID_SWAP]" ]] \
