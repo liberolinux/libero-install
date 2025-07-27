@@ -54,8 +54,10 @@ function check_config() {
 			   [[ ! -v "DISK_ID_TO_UUID[$DISK_ID_BIOS]" ]] \
 					   && die "Missing uuid for DISK_ID_BIOS, have you made sure it is used?"
 	   fi
-	[[ -v "DISK_ID_EFI" ]] && [[ ! -v "DISK_ID_TO_UUID[$DISK_ID_EFI]" ]] \
-		&& die "Missing uuid for DISK_ID_EFI, have you made sure it is used?"
+	if [[ "$LIBERO_ARCH" != "x86" ]]; then
+		[[ -v "DISK_ID_EFI" ]] && [[ ! -v "DISK_ID_TO_UUID[$DISK_ID_EFI]" ]] \
+			&& die "Missing uuid for DISK_ID_EFI, have you made sure it is used?"
+	fi
 	[[ -v "DISK_ID_SWAP" ]] && [[ ! -v "DISK_ID_TO_UUID[$DISK_ID_SWAP]" ]] \
 		&& die "Missing uuid for DISK_ID_SWAP, have you made sure it is used?"
 	[[ -v "DISK_ID_ROOT" ]] && [[ ! -v "DISK_ID_TO_UUID[$DISK_ID_ROOT]" ]] \
