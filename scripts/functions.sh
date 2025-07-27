@@ -41,8 +41,14 @@ function check_config() {
 
 	[[ -v "DISK_ID_ROOT" && -n $DISK_ID_ROOT ]] \
 		|| die "You must assign DISK_ID_ROOT"
-	[[ -v "DISK_ID_EFI" && -n $DISK_ID_EFI ]] || [[ -v "DISK_ID_BIOS" && -n $DISK_ID_BIOS ]] \
-		|| die "You must assign DISK_ID_EFI or DISK_ID_BIOS"
+	   # Allow root-bootable BIOS installs without a BIOS partition
+	   if [[ ! ( -v "DISK_ID_EFI" && -n $DISK_ID_EFI ) && ! ( -v "DISK_ID_BIOS" && -n $DISK_ID_BIOS ) ]]; then
+			   if [[ -v "DISK_ID_ROOT" && -n $DISK_ID_ROOT ]]; then
+					   elog "No EFI or BIOS partition set, assuming root-bootable BIOS mode."
+			   else
+					   die "You must assign DISK_ID_EFI or DISK_ID_BIOS or have a valid DISK_ID_ROOT for root-bootable BIOS."
+			   fi
+	   fi
 
 	[[ -v "DISK_ID_BIOS" ]] && [[ ! -v "DISK_ID_TO_UUID[$DISK_ID_BIOS]" ]] \
 		&& die "Missing uuid for DISK_ID_BIOS, have you made sure it is used?"
