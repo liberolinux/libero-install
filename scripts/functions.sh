@@ -931,23 +931,29 @@ function mount_by_id() {
 	[[ -n "$id" ]] || die "mount_by_id: id parameter is required"
 	[[ -n "$mountpoint" ]] || die "mount_by_id: mountpoint parameter is required"
 
-	# Mount BIOS partition if it's FAT-formatted (for systems that need it accessible)
-	if [[ "$id" == "$DISK_ID_BIOS" ]]; then
-		# Check if the BIOS partition has a FAT filesystem
-		local fstype
-		if fstype="$(get_blkid_field_by_device 'TYPE' "$(resolve_device_by_id "$id")" 2>/dev/null)" && [[ "$fstype" == "vfat" ]]; then
-			einfo "Mounting BIOS FAT partition (id=$id) at /boot/bios"
-			# Create /boot/bios directory if it doesn't exist
-			mkdir -p "/boot/bios" || die "Could not create /boot/bios directory"
-			# Mount with appropriate FAT options
-			mount -t vfat -o defaults,noatime,fmask=0177,dmask=0077,noexec,nodev,nosuid "$(resolve_device_by_id "$id")" "/boot/bios" \
-				|| die "Could not mount BIOS FAT partition to /boot/bios"
-			return 0
-		else
-			einfo "Skipping mount of BIOS partition (id=$id) - contains boot code, not a filesystem"
-			return 0
-		fi
-	fi
+	   # Prevent mounting if id is empty or unset
+	   if [[ -z "$id" ]]; then
+			   einfo "Skipping mount: id parameter is not set."
+			   return 0
+	   fi
+
+	   # Mount BIOS partition if it's FAT-formatted (for systems that need it accessible)
+	   if [[ "$id" == "$DISK_ID_BIOS" ]]; then
+			   # Check if the BIOS partition has a FAT filesystem
+			   local fstype
+			   if fstype="$(get_blkid_field_by_device 'TYPE' "$(resolve_device_by_id "$id")" 2>/dev/null)" && [[ "$fstype" == "vfat" ]]; then
+					   einfo "Mounting BIOS FAT partition (id=$id) at /boot/bios"
+					   # Create /boot/bios directory if it doesn't exist
+					   mkdir -p "/boot/bios" || die "Could not create /boot/bios directory"
+					   # Mount with appropriate FAT options
+					   mount -t vfat -o defaults,noatime,fmask=0177,dmask=0077,noexec,nodev,nosuid "$(resolve_device_by_id "$id")" "/boot/bios" \
+							   || die "Could not mount BIOS FAT partition to /boot/bios"
+					   return 0
+			   else
+					   einfo "Skipping mount of BIOS partition (id=$id) - contains boot code, not a filesystem"
+					   return 0
+			   fi
+	   fi
 
 	# Skip if already mounted
 	if mountpoint -q -- "$mountpoint" 2>/dev/null; then
