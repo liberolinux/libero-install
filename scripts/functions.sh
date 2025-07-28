@@ -904,14 +904,20 @@ function apply_disk_configuration() {
 }
 
 function mount_efivars() {
-	# Skip if already mounted
-	mountpoint -q -- "/sys/firmware/efi/efivars" \
-		&& return
+	   # Bypass EFI code for x86
+	   if [[ "$LIBERO_ARCH" == "x86" ]]; then
+			   einfo "Skipping efivars mount for x86 architecture."
+			   return
+	   fi
 
-	# Mount efivars
-	einfo "Mounting efivars"
-	mount -t efivarfs efivarfs "/sys/firmware/efi/efivars" \
-		|| die "Could not mount efivarfs"
+	   # Skip if already mounted
+	   mountpoint -q -- "/sys/firmware/efi/efivars" \
+			   && return
+
+	   # Mount efivars
+	   einfo "Mounting efivars"
+	   mount -t efivarfs efivarfs "/sys/firmware/efi/efivars" \
+			   || die "Could not mount efivarfs"
 }
 
 function mount_by_id() {
