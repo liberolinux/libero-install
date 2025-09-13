@@ -532,9 +532,26 @@ function install_kernel_bios() {
 	# Install syslinux MBR record
 	einfo "Copying syslinux MBR record"
 	local gptdev
-	gptdev="$(resolve_device_by_id "${DISK_ID_PART_TO_GPT_ID[$DISK_ID_BIOS]}")" \
-		|| die "Could not resolve device with id=${DISK_ID_PART_TO_GPT_ID[$DISK_ID_BIOS]}"
-	try dd bs=440 conv=notrunc count=1 if=/usr/share/syslinux/gptmbr.bin of="$gptdev"
+	gptdev="$(resolve_device_by_id "${DISK_ID_PART_TO_GPT_ID[$DISK_ID_BIOS]}")" || true
+	if [[ -z "$gptdev" ]]; then
+		# Attempt fallback: BIOS partition id belongs to MBR table with id inferred by stripping partition prefix
+		# We can attempt to read DISK_ID_TABLE_TYPE via variable indirection (exported from config)
+		for cand in "${!DISK_ID_TABLE_TYPE[@]}"; do
+			# No direct mapping kept for partitions; skip
+			:
+		done
+		# As a simple fallback, use block device itself (syslinux installs MBR code to whole disk referenced by partition's parent)
+		parent_dev_path="$(readlink -f "/sys/class/block/$(basename "$(resolve_device_by_id "$DISK_ID_BIOS")")/.." 2>/dev/null)"
+		if [[ -n "$parent_dev_path" && -b /dev/$(basename "$parent_dev_path") ]]; then
+			gptdev="/dev/$(basename "$parent_dev_path")"
+		else
+			die "Could not resolve parent disk for BIOS partition $DISK_ID_BIOS"
+		fi
+	fi
+	# Use appropriate MBR bootstrap code (gptmbr.bin also works for GPT; mbr.bin for msdos)
+	local mbr_boot_file="/usr/share/syslinux/mbr.bin"
+	[[ -f /usr/share/syslinux/gptmbr.bin && -n "${DISK_ID_PART_TO_GPT_ID[$DISK_ID_BIOS]}" ]] && mbr_boot_file="/usr/share/syslinux/gptmbr.bin"
+	try dd bs=440 conv=notrunc count=1 if="$mbr_boot_file" of="$gptdev"
 }
 
 function install_kernel_bios_root_bootable() {
@@ -569,9 +586,18 @@ function install_kernel_bios_root_bootable() {
 	# Install syslinux MBR record
 	einfo "Copying syslinux MBR record"
 	local gptdev
-	gptdev="$(resolve_device_by_id "${DISK_ID_PART_TO_GPT_ID[$DISK_ID_ROOT]}")" \
-		|| die "Could not resolve device with id=${DISK_ID_PART_TO_GPT_ID[$DISK_ID_ROOT]}"
-	try dd bs=440 conv=notrunc count=1 if=/usr/share/syslinux/gptmbr.bin of="$gptdev"
+	gptdev="$(resolve_device_by_id "${DISK_ID_PART_TO_GPT_ID[$DISK_ID_ROOT]}")" || true
+	if [[ -z "$gptdev" ]]; then
+		parent_dev_path="$(readlink -f "/sys/class/block/$(basename "$(resolve_device_by_id "$DISK_ID_ROOT")")/.." 2>/dev/null)"
+		if [[ -n "$parent_dev_path" && -b /dev/$(basename "$parent_dev_path") ]]; then
+			gptdev="/dev/$(basename "$parent_dev_path")"
+		else
+			die "Could not resolve parent disk for root partition $DISK_ID_ROOT"
+		fi
+	fi
+	local mbr_boot_file="/usr/share/syslinux/mbr.bin"
+	[[ -f /usr/share/syslinux/gptmbr.bin && -n "${DISK_ID_PART_TO_GPT_ID[$DISK_ID_ROOT]}" ]] && mbr_boot_file="/usr/share/syslinux/gptmbr.bin"
+	try dd bs=440 conv=notrunc count=1 if="$mbr_boot_file" of="$gptdev"
 }
 
 function generate_syslinux_cfg_root_bootable() {

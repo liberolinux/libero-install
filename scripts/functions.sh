@@ -261,6 +261,35 @@ function disk_create_gpt() {
 	partprobe "$device"
 }
 
+function disk_create_mbr() {
+	local new_id="${arguments[new_id]}"
+	if [[ ${disk_action_summarize_only-false} == "true" ]]; then
+		if [[ -v arguments[id] ]]; then
+			add_summary_entry "${arguments[id]}" "$new_id" "mbr" "" ""
+		else
+			add_summary_entry __root__ "$new_id" "${arguments[device]}" "(mbr)" ""
+		fi
+		return 0
+	fi
+
+	local device
+	local device_desc=""
+	if [[ -v arguments[id] ]]; then
+		device="$(resolve_device_by_id "${arguments[id]}")"
+		device_desc="$device ($id)"
+	else
+		device="${arguments[device]}"
+		device_desc="$device"
+	fi
+
+	einfo "Creating new mbr partition table ($new_id) on $device_desc"
+	wipefs --quiet --all --force "$device" \
+		|| die "Could not erase previous file system signatures from '$device'"
+	parted -s "$device" mklabel msdos >/dev/null \
+		|| die "Could not create new mbr partition table ($new_id) on '$device'"
+	partprobe "$device"
+}
+
 function disk_create_partition() {
 	local new_id="${arguments[new_id]}"
 	local id="${arguments[id]}"
@@ -292,11 +321,39 @@ function disk_create_partition() {
 		*) ;;
 	esac
 
-	einfo "Creating partition ($new_id) with type=$type, size=$size on $device"
-	# shellcheck disable=SC2086
-	sgdisk -n "0:0:$arg_size" -t "0:$type" -u "0:$partuuid" $extra_args "$device" >/dev/null \
-		|| die "Could not create new gpt partition ($new_id) on '$device' ($id)"
-	partprobe "$device"
+	local table_type="${DISK_ID_TABLE_TYPE[$id]}"
+	if [[ "$table_type" == "mbr" ]]; then
+		# For MBR we use parted; map types to partition type codes via sfdisk afterwards if needed
+		# Determine start/end (always append). parted mkpart primary START END, using percentages or sizes.
+		# We'll just let parted choose the first available space.
+		local part_label="primary"
+		# parted requires start/end; obtain free space via 'parted -m' is complex; simpler approach: use 'sfdisk --append' with size
+		# Implement using sfdisk script style.
+		local hex_type="83"
+		case "$type" in
+			'swap') hex_type='82';;
+			*) hex_type='83';;
+		esac
+		# Compute size in sectors if not remaining; if remaining leave size blank so sfdisk allocates rest.
+		local sfdisk_size_field=""
+		if [[ $size != "remaining" ]]; then
+			# Accept size like 512M/1G etc -> we can pass as +size to sfdisk
+			sfdisk_size_field="size=$size"
+		fi
+		# Append new partition definition
+		einfo "Creating MBR partition ($new_id) type=$hex_type size=$size on $device"
+		local sfdisk_line="$sfdisk_size_field,type=$hex_type"
+		# Use a subshell to avoid sfdisk reading existing layout modification complexity
+		echo "$sfdisk_line" | sfdisk --append "$device" >/dev/null \
+			|| die "Could not create new mbr partition ($new_id) on '$device' ($id)"
+		partprobe "$device"
+	else
+		einfo "Creating partition ($new_id) with type=$type, size=$size on $device"
+		# shellcheck disable=SC2086
+		sgdisk -n "0:0:$arg_size" -t "0:$type" -u "0:$partuuid" $extra_args "$device" >/dev/null \
+			|| die "Could not create new gpt partition ($new_id) on '$device' ($id)"
+		partprobe "$device"
+	fi
 
 	# On some system, we need to wait a bit for the partition to show up.
 	local new_device
@@ -676,9 +733,26 @@ function disk_mark_bootable() {
 		die "Could not determine partition number for device '$device'"
 	fi
 	
-	# Use sgdisk to set the legacy BIOS bootable flag (attribute 2)
-	sgdisk --attributes="$partnum:set:2" "$parent_device" >/dev/null \
-		|| die "Could not set bootable flag on partition $partnum of '$parent_device'"
+	# Decide on GPT vs MBR
+	local parent_table_type="${DISK_ID_TABLE_TYPE[${arguments[id]}]}"
+	if [[ -z "$parent_table_type" ]]; then
+		# Attempt to infer by checking if parent has a protective MBR via sgdisk -p
+		if sgdisk -p "$parent_device" >/dev/null 2>&1; then
+			parent_table_type="gpt"
+		else
+			parent_table_type="mbr"
+		fi
+	fi
+
+	if [[ "$parent_table_type" == "gpt" ]]; then
+		# Use sgdisk attribute (2) for legacy BIOS bootable
+		sgdisk --attributes="$partnum:set:2" "$parent_device" >/dev/null \
+			|| die "Could not set GPT bootable attribute on partition $partnum of '$parent_device'"
+	else
+		# Use parted to set boot flag for MBR
+		parted -s "$parent_device" set "$partnum" boot on >/dev/null \
+			|| die "Could not set MBR boot flag on partition $partnum of '$parent_device'"
+	fi
 	partprobe "$parent_device"
 }
 
@@ -688,6 +762,7 @@ function apply_disk_action() {
 	case "${arguments[action]}" in
 		'existing')          disk_existing         ;;
 		'create_gpt')        disk_create_gpt       ;;
+		'create_mbr')        disk_create_mbr       ;;
 		'create_partition')  disk_create_partition ;;
 		'create_raid')       disk_create_raid      ;;
 		'create_luks')       disk_create_luks      ;;

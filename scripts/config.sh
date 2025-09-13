@@ -38,6 +38,8 @@ DISK_DRACUT_CMDLINE=()
 declare -gA DISK_ID_TO_RESOLVABLE
 # An associative array from disk id to parent gpt disk id (only for partitions)
 declare -gA DISK_ID_PART_TO_GPT_ID
+# An associative array from disk id to table type (gpt|mbr)
+declare -gA DISK_ID_TABLE_TYPE
 # An associative array to check for existing ids (maps to uuids)
 declare -gA DISK_ID_TO_UUID
 # An associative set to check for correct usage of size=remaining in gpt tables
@@ -136,7 +138,28 @@ function create_gpt() {
 
 	local new_id="${arguments[new_id]}"
 	create_resolve_entry "$new_id" ptuuid "${DISK_ID_TO_UUID[$new_id]}"
+	DISK_ID_TABLE_TYPE[$new_id]="gpt"
 	DISK_ACTIONS+=("action=create_gpt" "$@" ";")
+}
+
+# Named arguments:
+# new_id:     Id for the new mbr table
+# device|id:  The operand block device or previously allocated id
+function create_mbr() {
+	local known_arguments=('+new_id' '+device|id')
+	local extra_arguments=()
+	declare -A arguments; parse_arguments "$@"
+
+	only_one_of device id
+	create_new_id new_id
+	[[ -v arguments[id] ]] \
+		&& verify_existing_id id
+
+	local new_id="${arguments[new_id]}"
+	# For uniformity reuse ptuuid resolve entry even though MBR has no partition table UUID
+	create_resolve_entry "$new_id" ptuuid "${DISK_ID_TO_UUID[$new_id]}"
+	DISK_ID_TABLE_TYPE[$new_id]="mbr"
+	DISK_ACTIONS+=("action=create_mbr" "$@" ";")
 }
 
 # Named arguments:
@@ -311,12 +334,12 @@ function create_classic_single_disk_layout() {
 	local use_luks="${arguments[luks]:-false}"
 	local root_fs="${arguments[root_fs]:-ext4}"
 
-	   create_gpt new_id=gpt device="$device"
+		create_mbr new_id=mbr device="$device"
 	   # Create swap partition first if requested
-	   [[ $size_swap != "false" ]] \
-			   && create_partition new_id=part_swap id=gpt size="$size_swap" type=swap
-	   # Then root ext4 partition with boot flag
-	   create_partition new_id=part_root id=gpt size=remaining type=linux
+		[[ $size_swap != "false" ]] \
+			   && create_partition new_id=part_swap id=mbr size="$size_swap" type=swap
+		# Then root ext4 partition with boot flag
+		create_partition new_id=part_root id=mbr size=remaining type=linux
 
 	   local root_id="part_root"
 	   if [[ "$use_luks" == "true" ]]; then
@@ -460,12 +483,12 @@ function create_raid0_luks_layout() {
 	local use_luks="${arguments[luks]:-true}"
 	local root_fs="${arguments[root_fs]:-ext4}"
 
-	for i in "${!extra_arguments[@]}"; do
-		create_gpt new_id="gpt_dev${i}" device="${extra_arguments[$i]}"
-		create_partition new_id="part_${type}_dev${i}" id="gpt_dev${i}" size=1GiB       type="$type"
+    for i in "${!extra_arguments[@]}"; do
+		create_mbr new_id="mbr_dev${i}" device="${extra_arguments[$i]}"
+		create_partition new_id="part_${type}_dev${i}" id="mbr_dev${i}" size=1GiB       type="$type"
 		[[ $size_swap != "false" ]] \
-			&& create_partition new_id="part_swap_dev${i}"    id="gpt_dev${i}" size="$size_swap" type=raid
-		create_partition new_id="part_root_dev${i}"    id="gpt_dev${i}" size=remaining    type=raid
+			&& create_partition new_id="part_swap_dev${i}"    id="mbr_dev${i}" size="$size_swap" type=raid
+		create_partition new_id="part_root_dev${i}"    id="mbr_dev${i}" size=remaining    type=raid
 	done
 
 	[[ $size_swap != "false" ]] \
@@ -524,12 +547,12 @@ function create_raid1_luks_layout() {
 	local use_luks="${arguments[luks]:-true}"
 	local root_fs="${arguments[root_fs]:-ext4}"
 
-	for i in "${!extra_arguments[@]}"; do
-		create_gpt new_id="gpt_dev${i}" device="${extra_arguments[$i]}"
-		create_partition new_id="part_${type}_dev${i}" id="gpt_dev${i}" size=1GiB       type="$type"
+    for i in "${!extra_arguments[@]}"; do
+		create_mbr new_id="mbr_dev${i}" device="${extra_arguments[$i]}"
+		create_partition new_id="part_${type}_dev${i}" id="mbr_dev${i}" size=1GiB       type="$type"
 		[[ $size_swap != "false" ]] \
-			&& create_partition new_id="part_swap_dev${i}"    id="gpt_dev${i}" size="$size_swap" type=raid
-		create_partition new_id="part_root_dev${i}"    id="gpt_dev${i}" size=remaining    type=raid
+			&& create_partition new_id="part_swap_dev${i}"    id="mbr_dev${i}" size="$size_swap" type=raid
+		create_partition new_id="part_root_dev${i}"    id="mbr_dev${i}" size=remaining    type=raid
 	done
 
 	create_raid new_id="part_raid_${type}" name="$type" level=1 ids="$(expand_ids "^part_${type}_dev[[:digit:]]$")"
@@ -589,11 +612,11 @@ function create_btrfs_centric_layout() {
 	local raid_type="${arguments[raid_type]:-raid0}"
 
 	# Create layout on first disk
-	create_gpt new_id="gpt_dev0" device="${extra_arguments[0]}"
-	create_partition new_id="part_${type}_dev0" id="gpt_dev0" size=1GiB       type="$type"
+	create_mbr new_id="mbr_dev0" device="${extra_arguments[0]}"
+	create_partition new_id="part_${type}_dev0" id="mbr_dev0" size=1GiB       type="$type"
 	[[ $size_swap != "false" ]] \
-		&& create_partition new_id="part_swap_dev0"    id="gpt_dev0" size="$size_swap" type=swap
-	create_partition new_id="part_root_dev0"    id="gpt_dev0" size=remaining    type=linux
+		&& create_partition new_id="part_swap_dev0"    id="mbr_dev0" size="$size_swap" type=swap
+	create_partition new_id="part_root_dev0"    id="mbr_dev0" size=remaining    type=linux
 
 	local root_id
 	local root_ids=""
@@ -656,10 +679,10 @@ function create_classic_single_disk_layout_root_bootable_bios() {
 	local use_luks="${arguments[luks]:-false}"
 	local root_fs="${arguments[root_fs]:-ext4}"
 
-	create_gpt new_id=gpt device="$device"
+	create_mbr new_id=mbr device="$device"
 	[[ $size_swap != "false" ]] \
-		&& create_partition new_id=part_swap    id=gpt size="$size_swap" type=swap
-	create_partition new_id=part_root    id=gpt size=remaining    type=linux
+		&& create_partition new_id=part_swap    id=mbr size="$size_swap" type=swap
+	create_partition new_id=part_root    id=mbr size=remaining    type=linux
 
 	local root_id="part_root"
 	if [[ "$use_luks" == "true" ]]; then
