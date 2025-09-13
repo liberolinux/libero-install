@@ -44,6 +44,8 @@ declare -gA DISK_ID_TABLE_TYPE
 declare -gA DISK_ID_TO_UUID
 # An associative set to check for correct usage of size=remaining in gpt tables
 declare -gA DISK_GPT_HAD_SIZE_REMAINING
+# Track presence of bios_grub partition per GPT table id
+declare -gA DISK_GPT_HAS_BIOS_GRUB
 
 function only_one_of() {
 	local previous=""
@@ -181,7 +183,7 @@ function create_partition() {
 
 	create_new_id new_id
 	verify_existing_id id
-	verify_option type bios efi swap raid luks linux
+	verify_option type bios efi swap raid luks linux bios_grub
 
 	[[ -v "DISK_GPT_HAD_SIZE_REMAINING[${arguments[id]}]" ]] \
 		&& die_trace 1 "Cannot add another partition to table (${arguments[id]}) after size=remaining was used"
@@ -192,6 +194,10 @@ function create_partition() {
 
 	local new_id="${arguments[new_id]}"
 	DISK_ID_PART_TO_GPT_ID[$new_id]="${arguments[id]}"
+	# Track bios_grub presence
+	if [[ ${arguments[type]} == "bios_grub" ]]; then
+		DISK_GPT_HAS_BIOS_GRUB[${arguments[id]}]=true
+	fi
 	create_resolve_entry "$new_id" partuuid "${DISK_ID_TO_UUID[$new_id]}"
 	DISK_ACTIONS+=("action=create_partition" "$@" ";")
 }

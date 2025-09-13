@@ -203,6 +203,7 @@ function add_summary_entry() {
 		"${DISK_ID_EFI-__unused__}")   ptr="[1;32m← efi[m"  ;;
 		"${DISK_ID_SWAP-__unused__}")  ptr="[1;34m← swap[m" ;;
 		"${DISK_ID_ROOT-__unused__}")  ptr="[1;33m← root[m" ;;
+		*bios_grub*)             ptr="[1;35m← bios_grub[m" ;;
 		# \x1f characters compensate for printf byte count and unicode character count mismatch due to '←'
 		*)                             ptr="[1;32m[m$(echo -e "\x1f\x1f")" ;;
 	esac
@@ -312,6 +313,7 @@ function disk_create_partition() {
 	local partuuid="${DISK_ID_TO_UUID[$new_id]}"
 	local extra_args=""
 	case "$type" in
+		'bios_grub') type='ef02';;
 		'bios')  type='ef02' extra_args='--attributes=0:set:2';;
 		'efi')   type='ef00' ;;
 		'swap')  type='8200' ;;
@@ -504,8 +506,16 @@ function disk_format() {
 	local type="${arguments[type]}"
 	local label="${arguments[label]}"
 	if [[ ${disk_action_summarize_only-false} == "true" ]]; then
-		add_summary_entry "${arguments[id]}" "__fs__${arguments[id]}" "${arguments[type]}" "(fs)" "$(summary_color_args label)"
+		if [[ "$type" == "bios_grub" ]]; then
+			add_summary_entry "${arguments[id]}" "__fs__${arguments[id]}" "bios_grub" "(special)" ""
+		else
+			add_summary_entry "${arguments[id]}" "__fs__${arguments[id]}" "${arguments[type]}" "(fs)" "$(summary_color_args label)"
+		fi
 		return 0
+	fi
+
+	if [[ "$type" == "bios_grub" ]]; then
+		die "bios_grub partition '$id' must not be formatted"
 	fi
 
 	local device
@@ -964,6 +974,39 @@ function apply_disk_configuration() {
 	ask "Do you really want to apply this disk configuration?" \
 		|| die "Aborted"
 	countdown "Applying in " 5
+
+	# Enforcement: If system will boot via BIOS (no EFI) and any GPT table present, require bios_grub partition.
+	if [[ ${IS_EFI-false} != true ]]; then
+		# Scan DISK_ACTIONS for any create_gpt entries and record their id
+		local current_params=()
+		local param
+		local gpt_ids=()
+		for param in "${DISK_ACTIONS[@]}"; do
+			if [[ $param == ';' ]]; then
+				if [[ ${current_params[0]} == "action=create_gpt" ]]; then
+					local gpt_new_id=""
+					local p
+					for p in "${current_params[@]}"; do
+						[[ $p == new_id=* ]] && gpt_new_id="${p#new_id=}"
+					done
+					[[ -n $gpt_new_id ]] && gpt_ids+=("$gpt_new_id")
+				fi
+				current_params=()
+			else
+				current_params+=("$param")
+			fi
+		done
+		if [[ ${#gpt_ids[@]} -gt 0 ]]; then
+			local missing=false
+			for gid in "${gpt_ids[@]}"; do
+				if [[ ! -v "DISK_GPT_HAS_BIOS_GRUB[$gid]" ]]; then
+					missing=true
+					ewarn "GPT table '$gid' has no bios_grub partition; required for legacy BIOS boot"
+				fi
+			done
+			[[ $missing == true ]] && die "Refusing to continue without required bios_grub partition(s)"
+		fi
+	fi
 
 	maybe_exec 'before_disk_configuration'
 
