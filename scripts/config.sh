@@ -156,8 +156,15 @@ function create_mbr() {
 		&& verify_existing_id id
 
 	local new_id="${arguments[new_id]}"
-	# For uniformity reuse ptuuid resolve entry even though MBR has no partition table UUID
-	create_resolve_entry "$new_id" ptuuid "${DISK_ID_TO_UUID[$new_id]}"
+	# For MBR, map directly to the underlying device (no PTUUID exists)
+	local dev=""
+	if [[ -v arguments[id] ]]; then
+		dev="$(resolve_device_by_id "${arguments[id]}")" \
+			|| die "Could not resolve device id='${arguments[id]}' for mbr table"
+	else
+		dev="${arguments[device]}"
+	fi
+	create_resolve_entry_device "$new_id" "$dev"
 	DISK_ID_TABLE_TYPE[$new_id]="mbr"
 	DISK_ACTIONS+=("action=create_mbr" "$@" ";")
 }
