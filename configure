@@ -184,6 +184,11 @@ function define_disk_layout() {
 ALL_LIBERO_ARCHS=("x86" "amd64" "arm" "arm64")
 # shellcheck disable=SC2034
 ALL_LIBERO_SUBARCHS=("i486" "i686")
+# Provide compatibility aliases for existing menu functions that still
+# reference ALL_GENTOO_ARCHS / ALL_GENTOO_SUBARCHS. This keeps the
+# interactive configurator working without changing all call sites.
+ALL_GENTOO_ARCHS=("${ALL_LIBERO_ARCHS[@]}")
+ALL_GENTOO_SUBARCHS=("${ALL_LIBERO_SUBARCHS[@]}")
 ALL_STAGE3_VARIANTS=(
 	"openrc"                   "openrc                  | Minimal OpenRC base (recommended)"
 	"openrc-splitusr"          "openrc-splitusr         | Minimal OpenRC base with a split-usr filesystem layout"
