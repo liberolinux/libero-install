@@ -52,7 +52,7 @@ while [[ $# -gt 0 ]]; do
 	case "$1" in
 		""|"help"|"--help"|"-help"|"-h")
 			echo "Usage: $0 [opts]... <action>"
-			echo "Performs a minimal libero installation. See https://github.com/oddlama/libero-install"
+			echo "Performs a minimal Libero installation. See https://github.com/oddlama/gentoo-install"
 			echo "for more information. If the configuration file does not exist, the configurator will"
 			echo "be started instead."
 			echo ""
@@ -62,7 +62,7 @@ while [[ $# -gt 0 ]]; do
 			echo "                                  as initial configuration in case it doesn't exist."
 			echo ""
 			echo "Actions:"
-			echo "  -i, --install                 Installs libero as configured. This is the default mode,"
+			echo "  -i, --install                 Installs Libero as configured. This is the default mode,"
 			echo "                                  if the given configuration file exists."
 			echo "  -R, --chroot <DIR> [CMD...]   Chroot into an existing system. The root filesystem"
 			echo "                                  must already be mounted under DIR. All required special"
@@ -87,8 +87,8 @@ while [[ $# -gt 0 ]]; do
 			[[ -z $ACTION ]] || die "Multiple actions given"
 			ACTION="install"
 			;;
-		"__install_libero_in_chroot")
-			ACTION="__install_libero_in_chroot"
+		"__install_gentoo_in_chroot")
+			ACTION="__install_gentoo_in_chroot"
 			;;
 		*) die "Invalid option '$1'" ;;
 	esac
@@ -104,9 +104,9 @@ if [[ -z "$ACTION" ]]; then
 		# Default if configuration exists: Run installer
 		ACTION="install"
 	else
-		# Default if configuration does not exist: Run configurator, and exit afterwards.
-		echo "You have not created a libero.conf. Starting configurator instead of installing."
-		exec "$LIBERO_INSTALL_REPO_DIR/configure" "$CONFIG"
+	# Default if configuration does not exist: Run configurator, and exit afterwards.
+	echo "You have not created a libero.conf. Starting configurator instead of installing."
+	exec "$LIBERO_INSTALL_REPO_DIR/configure" "$CONFIG"
 	fi
 fi
 
@@ -131,6 +131,6 @@ mkdir_or_die 0755 "$TMP_DIR"
 case "$ACTION" in
 	"chroot")  main_chroot "$CHROOT_DIR" "$@" ;;
 	"install") main_install "$@" ;;
-	"__install_libero_in_chroot") main_install_libero_in_chroot "$@" ;;
+	"__install_gentoo_in_chroot") main_install_gentoo_in_chroot "$@" ;;
 	*) die "Invalid action '$ACTION'" ;;
 esac

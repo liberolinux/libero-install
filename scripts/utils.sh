@@ -123,72 +123,16 @@ function download() {
 function get_blkid_field_by_device() {
 	local blkid_field="$1"
 	local device="$2"
-	local val=""
-	local retry_count=0
-	local max_retries=3
-	
-	# Validate input parameters
-	[[ -n "$blkid_field" ]] || die "blkid_field parameter is required"
-	[[ -n "$device" ]] || die "device parameter is required"
-	[[ -b "$device" ]] || die "Device '$device' is not a valid block device"
-	
-	while [[ $retry_count -lt $max_retries ]]; do
-		# Force kernel to re-read partition table
-		if type partprobe &>/dev/null; then
-			partprobe "$device" &>/dev/null || true
-		fi
-		
-		# Try multiple blkid approaches with timeouts
-		if timeout 30 blkid -g -c /dev/null &>/dev/null; then
-			# Method 1: Direct blkid export
-			if val="$(timeout 30 blkid -c /dev/null -o export "$device" 2>/dev/null)"; then
-				if [[ -n "$val" ]] && val="$(grep -- "^$blkid_field=" <<< "$val" 2>/dev/null)"; then
-					val="${val#"$blkid_field="}"
-					if [[ -n "$val" ]]; then
-						echo -n "$val"
-						return 0
-					fi
-				fi
-			fi
-			
-			# Method 2: Direct field query
-			if val="$(timeout 30 blkid -c /dev/null -s "$blkid_field" -o value "$device" 2>/dev/null)"; then
-				if [[ -n "$val" ]]; then
-					echo -n "$val"
-					return 0
-				fi
-			fi
-		fi
-		
-		# Method 3: Use /dev/disk/by-* symlinks as fallback
-		case "$blkid_field" in
-			'UUID'|'PARTUUID'|'LABEL'|'PARTLABEL')
-				local by_field="${blkid_field,,}"
-				[[ "$by_field" == "partlabel" ]] && by_field="partlabel"
-				[[ "$by_field" == "partuuid" ]] && by_field="partuuid"
-				[[ "$by_field" == "label" ]] && by_field="label"
-				[[ "$by_field" == "uuid" ]] && by_field="uuid"
-				
-				for link in "/dev/disk/by-$by_field"/*; do
-					if [[ -L "$link" ]] && [[ "$(readlink -f "$link" 2>/dev/null)" == "$device" ]]; then
-						val="$(basename "$link")"
-						if [[ -n "$val" ]]; then
-							echo -n "$val"
-							return 0
-						fi
-					fi
-				done
-				;;
-		esac
-		
-		retry_count=$((retry_count + 1))
-		if [[ $retry_count -lt $max_retries ]]; then
-			einfo "Retrying blkid for $device (attempt $((retry_count + 1))/$max_retries)" >&2
-			sleep 2
-		fi
-	done
-	
-	die "Could not get $blkid_field from device '$device' after $max_retries attempts"
+	blkid -g -c /dev/null \
+		|| die "Error while executing blkid"
+	partprobe &>/dev/null
+	local val
+	val="$(blkid -c /dev/null -o export "$device")" \
+		|| die "Error while executing blkid '$device'"
+	val="$(grep -- "^$blkid_field=" <<< "$val")" \
+		|| die "Could not find $blkid_field=... in blkid output"
+	val="${val#"$blkid_field="}"
+	echo -n "$val"
 }
 
 function get_blkid_uuid_for_id() {
@@ -204,177 +148,32 @@ function get_blkid_uuid_for_id() {
 function get_device_by_blkid_field() {
 	local blkid_field="$1"
 	local field_value="$2"
-	local dev=""
-	local retry_count=0
-	local max_retries=3
-	
-	# Validate input parameters
-	[[ -n "$blkid_field" ]] || die "blkid_field parameter is required"
-	[[ -n "$field_value" ]] || die "field_value parameter is required"
-	
-	while [[ $retry_count -lt $max_retries ]]; do
-		# Force kernel to re-read partition tables
-		if type partprobe &>/dev/null; then
-			partprobe &>/dev/null || true
-		fi
-		
-		# Method 1: Try direct blkid lookup with timeout
-		if timeout 30 blkid -g -c /dev/null &>/dev/null; then
-			if dev="$(timeout 30 blkid -c /dev/null -o export -t "$blkid_field=$field_value" 2>/dev/null)"; then
-				if [[ -n "$dev" ]] && dev="$(grep DEVNAME <<< "$dev" 2>/dev/null)"; then
-					dev="${dev#"DEVNAME="}"
-					if [[ -n "$dev" ]] && [[ -b "$dev" ]]; then
-						echo -n "$dev"
-						return 0
-					fi
-				fi
-			fi
-		fi
-		
-		# Method 2: Use /dev/disk/by-* symlinks as primary fallback
-		case "$blkid_field" in
-			'UUID')
-				local symlink_path="/dev/disk/by-uuid/$field_value"
-				if [[ -L "$symlink_path" ]]; then
-					dev="$(readlink -f "$symlink_path" 2>/dev/null)"
-					if [[ -n "$dev" ]] && [[ -b "$dev" ]]; then
-						echo -n "$dev"
-						return 0
-					fi
-				fi
-				;;
-			'PARTUUID')
-				local symlink_path="/dev/disk/by-partuuid/$field_value"
-				if [[ -L "$symlink_path" ]]; then
-					dev="$(readlink -f "$symlink_path" 2>/dev/null)"
-					if [[ -n "$dev" ]] && [[ -b "$dev" ]]; then
-						echo -n "$dev"
-						return 0
-					fi
-				fi
-				;;
-			'LABEL')
-				local symlink_path="/dev/disk/by-label/$field_value"
-				if [[ -L "$symlink_path" ]]; then
-					dev="$(readlink -f "$symlink_path" 2>/dev/null)"
-					if [[ -n "$dev" ]] && [[ -b "$dev" ]]; then
-						echo -n "$dev"
-						return 0
-					fi
-				fi
-				;;
-			'PARTLABEL')
-				local symlink_path="/dev/disk/by-partlabel/$field_value"
-				if [[ -L "$symlink_path" ]]; then
-					dev="$(readlink -f "$symlink_path" 2>/dev/null)"
-					if [[ -n "$dev" ]] && [[ -b "$dev" ]]; then
-						echo -n "$dev"
-						return 0
-					fi
-				fi
-				;;
-		esac
-		
-		# Method 3: Manual search through block devices as last resort
-		for device in /dev/sd* /dev/nvme* /dev/vd* /dev/xvd* /dev/hd*; do
-			[[ -b "$device" ]] || continue
-			
-			# Quick check using blkid for this specific device
-			if timeout 10 blkid -s "$blkid_field" -o value "$device" 2>/dev/null | grep -q "^$field_value$"; then
-				echo -n "$device"
-				return 0
-			fi
-		done
-		
-		retry_count=$((retry_count + 1))
-		if [[ $retry_count -lt $max_retries ]]; then
-			einfo "Retrying device lookup for $blkid_field=$field_value (attempt $((retry_count + 1))/$max_retries)" >&2
-			sleep 2
-		fi
-	done
-	
-	# Return error code instead of dying - let caller handle the error
-	return 1
+	blkid -g -c /dev/null \
+		|| die "Error while executing blkid"
+	type partprobe &>/dev/null && partprobe &>/dev/null
+	local dev
+	dev="$(blkid -c /dev/null -o export -t "$blkid_field=$field_value")" \
+		|| die "Error while executing blkid to find $blkid_field=$field_value"
+	dev="$(grep DEVNAME <<< "$dev")" \
+		|| die "Could not find DEVNAME=... in blkid output"
+	dev="${dev#"DEVNAME="}"
+	echo -n "$dev"
 }
 
 function get_device_by_partuuid() {
-	local partuuid="$1"
-	local symlink_path="/dev/disk/by-partuuid/$partuuid"
-	
-	# Validate input
-	[[ -n "$partuuid" ]] || die "partuuid parameter is required"
-	
-	# Method 1: Direct symlink check
-	if [[ -e "$symlink_path" ]]; then
-		echo -n "$symlink_path"
-		return 0
+	if [[ -e "/dev/disk/by-partuuid/$1" ]]; then
+		echo -n "/dev/disk/by-partuuid/$1"
+	else
+		get_device_by_blkid_field 'PARTUUID' "$1"
 	fi
-	
-	# Method 2: Wait for udev to create the symlink
-	local wait_timeout=15
-	local count=0
-	while [[ $count -lt $wait_timeout ]]; do
-		sleep 1
-		count=$((count + 1))
-		# Trigger udev refresh
-		if type udevadm &>/dev/null; then
-			udevadm settle &>/dev/null || true
-		fi
-		if [[ -e "$symlink_path" ]]; then
-			echo -n "$symlink_path"
-			return 0
-		fi
-	done
-	
-	# Method 3: Use improved blkid fallback with error handling
-	local device
-	if device="$(get_device_by_blkid_field 'PARTUUID' "$partuuid" 2>/dev/null)"; then
-		echo -n "$device"
-		return 0
-	fi
-	
-	# If all methods fail, return empty (let caller handle the error)
-	return 1
 }
 
 function get_device_by_uuid() {
-	local uuid="$1"
-	local symlink_path="/dev/disk/by-uuid/$uuid"
-	
-	# Validate input
-	[[ -n "$uuid" ]] || die "uuid parameter is required"
-	
-	# Method 1: Direct symlink check
-	if [[ -e "$symlink_path" ]]; then
-		echo -n "$symlink_path"
-		return 0
+	if [[ -e "/dev/disk/by-uuid/$1" ]]; then
+		echo -n "/dev/disk/by-uuid/$1"
+	else
+		get_device_by_blkid_field 'UUID' "$1"
 	fi
-	
-	# Method 2: Wait for udev to create the symlink
-	local wait_timeout=15
-	local count=0
-	while [[ $count -lt $wait_timeout ]]; do
-		sleep 1
-		count=$((count + 1))
-		# Trigger udev refresh
-		if type udevadm &>/dev/null; then
-			udevadm settle &>/dev/null || true
-		fi
-		if [[ -e "$symlink_path" ]]; then
-			echo -n "$symlink_path"
-			return 0
-		fi
-	done
-	
-	# Method 3: Use improved blkid fallback with error handling
-	local device
-	if device="$(get_device_by_blkid_field 'UUID' "$uuid" 2>/dev/null)"; then
-		echo -n "$device"
-		return 0
-	fi
-	
-	# If all methods fail, return empty (let caller handle the error)
-	return 1
 }
 
 function cache_lsblk_output() {
@@ -430,14 +229,14 @@ function create_resolve_entry() {
 	local type="$2"
 	local arg="${3,,}"
 
-	DISK_ID_TO_RESOLVABLE[$id]="$type:$arg"
+	DISK_ID_TO_RESOLVABLE["$id"]="$type:$arg"
 }
 
 function create_resolve_entry_device() {
 	local id="$1"
 	local dev="$2"
 
-	DISK_ID_TO_RESOLVABLE[$id]="device:$dev"
+	DISK_ID_TO_RESOLVABLE["$id"]="device:$dev"
 }
 
 # Returns the basename of the device, if its path starts with /dev/disk/by-id/
@@ -448,50 +247,15 @@ function shorten_device() {
 # Return matching device from /dev/disk/by-id/ if possible,
 # otherwise return the parameter unchanged.
 function canonicalize_device() {
-	local given_dev="$1"
-	local resolved_dev=""
-	
-	# Validate input
-	if [[ -z "$given_dev" || "$given_dev" == "." ]]; then
-		echo -n "$given_dev"
-		return 0
-	fi
-	
-	# Check if device exists as a block device
-	if [[ ! -b "$given_dev" ]] && [[ ! -L "$given_dev" ]]; then
-		echo -n "$given_dev"
-		return 0
-	fi
-	
-	# Try to resolve the device path with error handling
-	resolved_dev="$(realpath "$given_dev" 2>/dev/null)" || {
-		# If realpath fails, try readlink for symlinks
-		if [[ -L "$given_dev" ]]; then
-			resolved_dev="$(readlink -f "$given_dev" 2>/dev/null)" || {
-				echo -n "$given_dev"
-				return 0
-			}
-		else
-			echo -n "$given_dev"
+	given_dev="$(realpath "$1")"
+	for dev in /dev/disk/by-id/*; do
+		if [[ "$(realpath "$dev")" == "$given_dev" ]]; then
+			echo -n "$dev"
 			return 0
 		fi
-	}
-	
-	# Look for matching /dev/disk/by-id/ entry
-	if [[ -d "/dev/disk/by-id" ]]; then
-		for dev in /dev/disk/by-id/*; do
-			[[ -e "$dev" ]] || continue
-			local dev_resolved
-			dev_resolved="$(realpath "$dev" 2>/dev/null)" || continue
-			if [[ "$dev_resolved" == "$resolved_dev" ]]; then
-				echo -n "$dev"
-				return 0
-			fi
-		done
-	fi
+	done
 
-	# Return the resolved path or original if no by-id match found
-	echo -n "${resolved_dev:-$given_dev}"
+	echo -n "$1"
 }
 
 function resolve_device_by_id() {
@@ -502,36 +266,17 @@ function resolve_device_by_id() {
 	local type="${DISK_ID_TO_RESOLVABLE[$id]%%:*}"
 	local arg="${DISK_ID_TO_RESOLVABLE[$id]#*:}"
 
-	local dev=""
+	local dev
 	case "$type" in
-		'partuuid') 
-			if ! dev=$(get_device_by_partuuid "$arg"); then
-				die "Cannot resolve PARTUUID=$arg to device"
-			fi
-			;;
-		'ptuuid')   
-			if ! dev=$(get_device_by_ptuuid "$arg"); then
-				die "Cannot resolve PTUUID=$arg to device"
-			fi
-			;;
-		'uuid')     
-			if ! dev=$(get_device_by_uuid "$arg"); then
-				die "Cannot resolve UUID=$arg to device"
-			fi
-			;;
-		'mdadm')    
-			if ! dev=$(get_device_by_mdadm_uuid "$arg"); then
-				die "Cannot resolve MDADM UUID=$arg to device"
-			fi
-			;;
+		'partuuid') dev=$(get_device_by_partuuid   "$arg") ;;
+		'ptuuid')   dev=$(get_device_by_ptuuid     "$arg") ;;
+		'uuid')     dev=$(get_device_by_uuid       "$arg") ;;
+		'mdadm')    dev=$(get_device_by_mdadm_uuid "$arg") ;;
 		'luks')     dev=$(get_device_by_luks_name  "$arg") ;;
 		'device')   dev="$arg" ;;
 		*) die "Cannot resolve '$type:$arg' to device (unknown type)"
 	esac
 
-	# Validate that we got a device
-	[[ -n "$dev" ]] || die "Device resolution returned empty result for '$type:$arg'"
-	
 	canonicalize_device "$dev"
 }
 
@@ -566,7 +311,7 @@ function parse_arguments() {
 			continue
 		fi
 
-		arguments[$key]="$value"
+		arguments["$key"]="$value"
 	done
 
 	declare -A allowed_keys

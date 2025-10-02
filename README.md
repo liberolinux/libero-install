@@ -1,6 +1,6 @@
 ## About libero-install
 
-This project aspires to be your favourite way to install libero.
+This project aspires to be your favourite way to install gentoo.
 It aims to provide a smooth installation experience, both for beginners and experts.
 You may configure it by using a menuconfig-inspired interface or simply via a config file.
 
@@ -19,10 +19,10 @@ like [Ansible](https://github.com/ansible/ansible) or [Fora](https://github.com/
 
 This installer might appeal to you if
 
-- you want to try libero without initially investing a lot of time, or fully committing to it yet.
-- you already are a libero expert but want an automatic and repeatable best-practices installation.
+- you want to try gentoo without initially investing a lot of time, or fully committing to it yet.
+- you already are a gentoo expert but want an automatic and repeatable best-practices installation.
 
-Of course, we do encourage everyone to install libero manually. You will learn a lot if you
+Of course, we do encourage everyone to install gentoo manually. You will learn a lot if you
 haven't done so already.
 
 ## Usage
@@ -43,7 +43,7 @@ Every option is explained in detail in `libero.conf.example` and in the help men
 When installing, you will be asked to review the partitioning before anything critical is done.
 
 The installer should be able to run without any user supervision after partitioning, but depending
-on the current state of the libero repository, you might need to intervene in case a package fails
+on the current state of the gentoo repository, you might need to intervene in case a package fails
 to emerge. The critical commands will ask you what to do in case of a failure. If you encounter a
 problem you cannot solve, you might want to consider getting in contact with some experienced people
 on [IRC](https://www.gentoo.org/get-involved/irc-channels/) or [Discord](https://discord.com/invite/gentoolinux).
@@ -68,7 +68,7 @@ with some parts depending on the chosen configuration:
    - (Optional) Install sshd with secure config (no password logins)
    - (Optional) Install additional packages provided in config
 
-The goal of the installer is just to setup a minimal libero system following best-practices.
+The goal of the installer is just to setup a minimal gentoo system following best-practices.
 Anything beyond that is considered out-of-scope (with the exception of configuring sshd).
 Here are some things that you might want to consider doing after the system installation is finished:
 
@@ -177,7 +177,7 @@ Make of this what you will, both have their own quirks. Choose your poison.
 ## Troubleshooting and FAQ
 
 After the initial sanity check, the script should be able to finish unattendedly.
-But given the unpredictability of future libero versions, you might still run into issues
+But given the unpredictability of future gentoo versions, you might still run into issues
 once in a while.
 
 The script checks every command for success, so if anything fails during installation,

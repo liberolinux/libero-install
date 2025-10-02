@@ -1,77 +1,9 @@
 # shellcheck source=./scripts/protection.sh
 source "$LIBERO_INSTALL_REPO_DIR/scripts/protection.sh" || exit 1
-# shellcheck source=./scripts/functions.sh
-source "$LIBERO_INSTALL_REPO_DIR/scripts/functions.sh" || exit 1
 
 
 ################################################
 # Functions
-
-function validate_locale_configuration() {
-	local locale_var="$1"
-	local locales_var="$2"
-	
-	# Basic validation
-	if [[ -z "$locale_var" ]]; then
-		ewarn "LOCALE is empty or undefined"
-		return 1
-	fi
-	
-	# Check if the locale is properly formatted
-	if [[ ! "$locale_var" =~ ^[A-Za-z_]+(\.[A-Za-z0-9-]+)?$ ]]; then
-		ewarn "LOCALE '$locale_var' appears to have invalid format"
-		ewarn "Expected format: language_COUNTRY.encoding (e.g., en_US.UTF-8)"
-	fi
-	
-	# Check if LOCALES contains corresponding entry for non-musl systems
-	if [[ $MUSL != "true" ]] && [[ -n "$locales_var" ]]; then
-		# Extract the locale name without encoding for comparison
-		local locale_base="${locale_var%.*}"
-		local locale_encoding="${locale_var##*.}"
-		
-		# Check if there's a matching entry in LOCALES
-		if ! echo "$locales_var" | grep -q "^${locale_base}\."; then
-			ewarn "LOCALE '$locale_var' does not appear to have a corresponding entry in LOCALES"
-			ewarn "You may need to add something like '${locale_base}.UTF-8 UTF-8' to LOCALES"
-		fi
-	fi
-	
-	return 0
-}
-
-function auto_fix_locale_configuration() {
-	# Auto-fix common locale configuration issues
-	einfo "Attempting to auto-fix locale configuration..."
-	
-	# If LOCALE is set but LOCALES is empty, try to add a basic entry
-	if [[ -n "$LOCALE" ]] && [[ -z "$LOCALES" ]] && [[ "$LOCALE" != "C" ]] && [[ "$LOCALE" != "POSIX" ]] && [[ "$LOCALE" != "C.UTF-8" ]]; then
-		ewarn "LOCALE is set to '$LOCALE' but LOCALES is empty"
-		einfo "Auto-adding locale entry to LOCALES"
-		
-		# Try to construct a reasonable LOCALES entry
-		if [[ "$LOCALE" =~ ^([a-z_]+)\.UTF-?8$ ]]; then
-			local base_locale="${BASH_REMATCH[1]}"
-			LOCALES="${base_locale}.UTF-8 UTF-8"
-			einfo "Added '${base_locale}.UTF-8 UTF-8' to LOCALES"
-		elif [[ "$LOCALE" =~ ^([a-z_]+)\.(.+)$ ]]; then
-			local base_locale="${BASH_REMATCH[1]}"
-			local encoding="${BASH_REMATCH[2]}"
-			LOCALES="${base_locale}.${encoding^^} ${encoding^^}"
-			einfo "Added '${base_locale}.${encoding^^} ${encoding^^}' to LOCALES"
-		else
-			ewarn "Could not auto-fix LOCALES for locale '$LOCALE'"
-		fi
-	fi
-	
-	# Ensure C.UTF-8 is always available as fallback
-	if [[ -z "$LOCALES" ]]; then
-		einfo "LOCALES is empty, adding minimal C.UTF-8 locale"
-		LOCALES="C.UTF-8 UTF-8"
-	elif ! echo "$LOCALES" | grep -q "C\.UTF-8"; then
-		einfo "Adding C.UTF-8 as fallback locale"
-		LOCALES="$LOCALES"$'\n'"C.UTF-8 UTF-8"
-	fi
-}
 
 function install_stage3() {
 	prepare_installation_environment
@@ -81,13 +13,6 @@ function install_stage3() {
 }
 
 function configure_base_system() {
-	# Validate locale configuration before proceeding
-	einfo "Validating locale configuration..."
-	validate_locale_configuration "$LOCALE" "$LOCALES"
-	
-	# Auto-fix common issues
-	auto_fix_locale_configuration
-	
 	if [[ $MUSL == "true" ]]; then
 		einfo "Installing musl-locales"
 		try emerge --verbose sys-apps/musl-locales
@@ -95,39 +20,10 @@ function configure_base_system() {
 			|| die "Could not write to /etc/env.d/00local"
 	else
 		einfo "Generating locales"
-		# Ensure LOCALES is not empty and contains at least C.UTF-8
-		if [[ -z "$LOCALES" ]]; then
-			ewarn "LOCALES is empty, adding default C.UTF-8 locale"
-			LOCALES="C.UTF-8 UTF-8"
-		fi
-		
-		# Write locales to locale.gen
 		echo "$LOCALES" > /etc/locale.gen \
 			|| die "Could not write /etc/locale.gen"
-		
-		# Generate locales with better error handling
-		einfo "Running locale-gen..."
-		if ! locale-gen; then
-			eerror "Failed to generate locales. Contents of /etc/locale.gen:"
-			cat /etc/locale.gen || true
-			eerror "Calling diagnostic function..."
-			diagnose_locale_issues
-			die "Could not generate locales"
-		fi
-		
-		# Verify that locales were generated successfully
-		einfo "Verifying generated locales..."
-		if ! locale -a >/dev/null 2>&1; then
-			ewarn "locale -a command failed, but continuing anyway"
-		else
-			local available_locales
-			available_locales="$(locale -a 2>/dev/null || echo "")"
-			einfo "Available locales after generation:"
-			echo "$available_locales" | head -10 | sed 's/^/  /'
-			if [[ $(echo "$available_locales" | wc -l) -gt 10 ]]; then
-				einfo "  ... and $(($(echo "$available_locales" | wc -l) - 10)) more"
-			fi
-		fi
+		locale-gen \
+			|| die "Could not generate locales"
 	fi
 
 	if [[ $SYSTEMD == "true" ]]; then
@@ -147,21 +43,8 @@ function configure_base_system() {
 
 		# Set locale
 		einfo "Selecting locale"
-		# Validate locale format and availability
-		if [[ -z "$LOCALE" ]]; then
-			ewarn "LOCALE is empty, using default C.UTF-8"
-			LOCALE="C.UTF-8"
-		fi
-		
-		einfo "Setting LANG=$LOCALE in /etc/locale.conf"
 		echo "LANG=$LOCALE" > /etc/locale.conf \
 			|| die "Could not write /etc/locale.conf"
-		
-		# Verify the locale setting
-		if [[ -f /etc/locale.conf ]]; then
-			einfo "Contents of /etc/locale.conf:"
-			cat /etc/locale.conf | sed 's/^/  /'
-		fi
 
 		einfo "Selecting timezone"
 		ln -sfn "../usr/share/zoneinfo/$TIMEZONE" /etc/localtime \
@@ -194,100 +77,11 @@ function configure_base_system() {
 
 		# Set locale
 		einfo "Selecting locale"
-		# Validate locale format and availability
-		if [[ -z "$LOCALE" ]]; then
-			ewarn "LOCALE is empty, using default C.UTF-8"
-			LOCALE="C.UTF-8"
-		fi
-		
-		# Check if locale is available before setting it
-		local available_locales
-		if available_locales="$(locale -a 2>/dev/null)"; then
-			if ! echo "$available_locales" | grep -Fxq "$LOCALE"; then
-				ewarn "Requested locale '$LOCALE' not found in available locales"
-				einfo "Available locales:"
-				echo "$available_locales" | head -5 | sed 's/^/  /'
-				if [[ $(echo "$available_locales" | wc -l) -gt 5 ]]; then
-					einfo "  ... and $(($(echo "$available_locales" | wc -l) - 5)) more"
-				fi
-				
-				# Try to find a close match or fallback
-				local fallback_locale=""
-				if echo "$available_locales" | grep -Fq "C.UTF-8"; then
-					fallback_locale="C.UTF-8"
-				elif echo "$available_locales" | grep -Fq "C.utf8"; then
-					fallback_locale="C.utf8"
-				elif echo "$available_locales" | grep -Fq "POSIX"; then
-					fallback_locale="POSIX"
-				elif echo "$available_locales" | grep -Fq "C"; then
-					fallback_locale="C"
-				fi
-				
-				if [[ -n "$fallback_locale" ]]; then
-					ewarn "Using fallback locale: $fallback_locale"
-					LOCALE="$fallback_locale"
-				else
-					ewarn "No suitable fallback locale found, attempting to use '$LOCALE' anyway"
-				fi
-			fi
-		else
-			ewarn "Could not get list of available locales, proceeding with '$LOCALE'"
-		fi
-		
-		einfo "Setting locale to '$LOCALE' using eselect"
-		if ! eselect locale set "$LOCALE"; then
-			eerror "Failed to set locale '$LOCALE' using eselect"
-			diagnose_locale_issues "$LOCALE"
-			einfo "Attempting alternative locale selection methods..."
-			
-			# Try manual configuration as fallback
-			einfo "Trying manual locale configuration..."
-			if [[ -f /etc/env.d/02locale ]]; then
-				rm -f /etc/env.d/02locale
-			fi
-			echo "LANG=\"$LOCALE\"" > /etc/env.d/02locale \
-				|| die "Could not write /etc/env.d/02locale"
-			
-			# Also ensure locale.conf exists for systemd compatibility
-			echo "LANG=$LOCALE" > /etc/locale.conf \
-				|| die "Could not write /etc/locale.conf"
-			
-			ewarn "Used manual locale configuration as fallback"
-		else
-			einfo "Successfully set locale using eselect"
-		fi
-		
-		# Verify the locale setting
-		einfo "Verifying locale configuration..."
-		if [[ -f /etc/env.d/02locale ]]; then
-			einfo "Contents of /etc/env.d/02locale:"
-			cat /etc/env.d/02locale | sed 's/^/  /'
-		fi
+		try eselect locale set "$LOCALE"
 	fi
 
-	# Update environment after locale changes
-	einfo "Updating environment after locale configuration"
+	# Update environment
 	env_update
-
-	# Final verification of locale setting (works for both systemd and OpenRC)
-	einfo "Final locale verification..."
-	if [[ $SYSTEMD == "true" ]]; then
-		if [[ -f /etc/locale.conf ]] && grep -q "LANG=" /etc/locale.conf; then
-			local configured_locale
-			configured_locale="$(grep "LANG=" /etc/locale.conf | cut -d= -f2)"
-			einfo "Locale configured in /etc/locale.conf: $configured_locale"
-		else
-			ewarn "No locale configuration found in /etc/locale.conf"
-		fi
-	else
-		if [[ -f /etc/env.d/02locale ]] && grep -q "LANG=" /etc/env.d/02locale; then
-			local configured_locale
-			configured_locale="$(grep "LANG=" /etc/env.d/02locale | cut -d= -f2 | tr -d '"')"
-			einfo "Locale configured in /etc/env.d/02locale: $configured_locale"
-		else
-			ewarn "No locale configuration found in /etc/env.d/02locale"
-		fi
-	fi
 }
 
 function configure_portage() {
@@ -321,7 +115,7 @@ function configure_portage() {
 
 function enable_sshd() {
 	einfo "Installing and enabling sshd"
-	install -m0600 -o root -g root "/tmp/libero-install/contrib/sshd_config" /etc/ssh/sshd_config \
+	install -m0600 -o root -g root "$LIBERO_INSTALL_REPO_DIR/contrib/sshd_config" /etc/ssh/sshd_config \
 		|| die "Could not install /etc/ssh/sshd_config"
 	enable_service sshd
 }
@@ -361,17 +155,13 @@ function generate_initramfs() {
 
 	dracut_opts=()
 	if [[ $SYSTEMD == "true" && $SYSTEMD_INITRAMFS_SSHD == "true" ]]; then
-		# Use disk-based temporary directory for git operations to conserve RAM
-		local git_tmpdir="/var/tmp/dracut-sshd-$$"
-		mkdir -p "$git_tmpdir" || die "Could not create git temporary directory '$git_tmpdir'"
-		cd "$git_tmpdir" || die "Could not change into '$git_tmpdir'"
+		cd /tmp || die "Could not change into /tmp"
 		try git clone https://github.com/gsauthof/dracut-sshd
 		try cp -r dracut-sshd/46sshd /usr/lib/dracut/modules.d
 		sed -e 's/^Type=notify/Type=simple/' \
 			-e 's@^\(ExecStart=/usr/sbin/sshd\) -D@\1 -e -D@' \
 			-i /usr/lib/dracut/modules.d/46sshd/sshd.service \
 			|| die "Could not replace sshd options in service file"
-		rm -rf "$git_tmpdir" || die "Could not cleanup git temporary directory '$git_tmpdir'"
 		dracut_opts+=("--install" "/etc/systemd/network/20-wired.network")
 		modules+=("systemd-networkd")
 	fi
@@ -458,10 +248,12 @@ function install_kernel_efi() {
 	local gptdev
 	if mdadm --detail --scan "$efipartdev" | grep -qE "^ARRAY $efipartdev " && [[ "$efipartdev" =~ ^/dev/md[0-9]+$ ]]; then
 		# RAID 1 case: Create EFI boot entries for each RAID member
-		local raid_members
-		raid_members=($(mdadm --detail "$efipartdev" | sed -n 's|.*active sync[^/]*\(/dev/[^ ]*\).*|\1|p' | sort))
+	local raid_members
+	# Use mapfile to safely read lines into an array instead of splitting
+	# command substitution, addressing shellcheck SC2207.
+	mapfile -t raid_members < <(mdadm --detail "$efipartdev" | sed -n 's|.*active sync[^/]*\(/dev/[^ ]*\).*|\1|p' | sort)
 
-		if [[ ${#raid_members[@]} -eq 0 ]]; then
+	if [[ ${#raid_members[@]} -eq 0 ]]; then
 			die "RAID setup detected, but no valid member disks found for $efipartdev"
 		fi
 
@@ -470,7 +262,7 @@ function install_kernel_efi() {
 		for disk in "${raid_members[@]}"; do
 			gptdev="$disk"
 			einfo "Adding EFI boot entry for RAID member: $gptdev"
-			try efibootmgr --verbose --create --disk "$gptdev" --part "$efipartnum" --label "libero" --loader '\vmlinuz.efi' --unicode "initrd=\\initramfs.img $(get_cmdline)"
+		try efibootmgr --verbose --create --disk "$gptdev" --part "$efipartnum" --label "libero" --loader '\vmlinuz.efi' --unicode "initrd=\\initramfs.img $(get_cmdline)"
 		done
 	else
 		# Non-RAID case: Create a single EFI boot entry
@@ -480,7 +272,7 @@ function install_kernel_efi() {
 			gptdev="$(resolve_device_by_id "${DISK_ID_PART_TO_GPT_ID[$DISK_ID_EFI]}")" \
 				|| die "Could not resolve device with id=${DISK_ID_PART_TO_GPT_ID[$DISK_ID_EFI]}"
 		fi
-		try efibootmgr --verbose --create --disk "$gptdev" --part "$efipartnum" --label "libero" --loader '\vmlinuz.efi' --unicode 'initrd=\initramfs.img'" $(get_cmdline)"
+	try efibootmgr --verbose --create --disk "$gptdev" --part "$efipartnum" --label "libero" --loader '\vmlinuz.efi' --unicode 'initrd=\initramfs.img'" $(get_cmdline)"
 	fi
 
 	# Create script to repeat adding efibootmgr entry
@@ -532,84 +324,9 @@ function install_kernel_bios() {
 	# Install syslinux MBR record
 	einfo "Copying syslinux MBR record"
 	local gptdev
-	gptdev="$(resolve_device_by_id "${DISK_ID_PART_TO_GPT_ID[$DISK_ID_BIOS]}")" || true
-	if [[ -z "$gptdev" ]]; then
-		# Attempt fallback: BIOS partition id belongs to MBR table with id inferred by stripping partition prefix
-		# We can attempt to read DISK_ID_TABLE_TYPE via variable indirection (exported from config)
-		for cand in "${!DISK_ID_TABLE_TYPE[@]}"; do
-			# No direct mapping kept for partitions; skip
-			:
-		done
-		# As a simple fallback, use block device itself (syslinux installs MBR code to whole disk referenced by partition's parent)
-		parent_dev_path="$(readlink -f "/sys/class/block/$(basename "$(resolve_device_by_id "$DISK_ID_BIOS")")/.." 2>/dev/null)"
-		if [[ -n "$parent_dev_path" && -b /dev/$(basename "$parent_dev_path") ]]; then
-			gptdev="/dev/$(basename "$parent_dev_path")"
-		else
-			die "Could not resolve parent disk for BIOS partition $DISK_ID_BIOS"
-		fi
-	fi
-	# Use appropriate MBR bootstrap code (gptmbr.bin also works for GPT; mbr.bin for msdos)
-	local mbr_boot_file="/usr/share/syslinux/mbr.bin"
-	[[ -f /usr/share/syslinux/gptmbr.bin && -n "${DISK_ID_PART_TO_GPT_ID[$DISK_ID_BIOS]}" ]] && mbr_boot_file="/usr/share/syslinux/gptmbr.bin"
-	try dd bs=440 conv=notrunc count=1 if="$mbr_boot_file" of="$gptdev"
-}
-
-function install_kernel_bios_root_bootable() {
-	try emerge --verbose sys-boot/syslinux
-
-	# Link kernel to known name in /boot (no separate /boot/bios partition)
-	local kernel_file
-	kernel_file="$(find "/boot" \( -name "vmlinuz-*" -or -name 'kernel-*' \) -printf '%f\n' | sort -V | tail -n 1)" \
-		|| die "Could not list newest kernel file"
-
-	try cp "/boot/$kernel_file" "/boot/vmlinuz-current"
-
-	# Generate initramfs in /boot
-	generate_initramfs "/boot/initramfs.img"
-
-	# Install syslinux to root partition
-	einfo "Installing syslinux to root partition"
-	local rootdev
-	rootdev="$(resolve_device_by_id "$DISK_ID_ROOT")" \
-		|| die "Could not resolve device with id=$DISK_ID_ROOT"
-	
-	# Create syslinux directory in /boot
-	mkdir_or_die 0700 "/boot/syslinux"
-	
-	# Install syslinux to the root partition
-	try syslinux --directory boot/syslinux --install "$rootdev"
-
-	# Create syslinux.cfg for root partition boot
-	generate_syslinux_cfg_root_bootable > /boot/syslinux/syslinux.cfg \
-		|| die "Could save generated syslinux.cfg"
-
-	# Install syslinux MBR record
-	einfo "Copying syslinux MBR record"
-	local gptdev
-	gptdev="$(resolve_device_by_id "${DISK_ID_PART_TO_GPT_ID[$DISK_ID_ROOT]}")" || true
-	if [[ -z "$gptdev" ]]; then
-		parent_dev_path="$(readlink -f "/sys/class/block/$(basename "$(resolve_device_by_id "$DISK_ID_ROOT")")/.." 2>/dev/null)"
-		if [[ -n "$parent_dev_path" && -b /dev/$(basename "$parent_dev_path") ]]; then
-			gptdev="/dev/$(basename "$parent_dev_path")"
-		else
-			die "Could not resolve parent disk for root partition $DISK_ID_ROOT"
-		fi
-	fi
-	local mbr_boot_file="/usr/share/syslinux/mbr.bin"
-	[[ -f /usr/share/syslinux/gptmbr.bin && -n "${DISK_ID_PART_TO_GPT_ID[$DISK_ID_ROOT]}" ]] && mbr_boot_file="/usr/share/syslinux/gptmbr.bin"
-	try dd bs=440 conv=notrunc count=1 if="$mbr_boot_file" of="$gptdev"
-}
-
-function generate_syslinux_cfg_root_bootable() {
-	cat <<EOF
-DEFAULT libero
-PROMPT 0
-TIMEOUT 0
-
-LABEL libero
-	LINUX vmlinuz-current
-	APPEND initrd=initramfs.img $(get_cmdline)
-EOF
+	gptdev="$(resolve_device_by_id "${DISK_ID_PART_TO_GPT_ID[$DISK_ID_BIOS]}")" \
+		|| die "Could not resolve device with id=${DISK_ID_PART_TO_GPT_ID[$DISK_ID_BIOS]}"
+	try dd bs=440 conv=notrunc count=1 if=/usr/share/syslinux/gptmbr.bin of="$gptdev"
 }
 
 function install_kernel() {
@@ -618,11 +335,8 @@ function install_kernel() {
 
 	if [[ $IS_EFI == "true" ]]; then
 		install_kernel_efi
-	elif [[ -v "DISK_ID_BIOS" ]]; then
-		install_kernel_bios
 	else
-		# No separate BIOS partition, install directly to root
-		install_kernel_bios_root_bootable
+		install_kernel_bios
 	fi
 
 	einfo "Installing linux-firmware"
@@ -638,23 +352,22 @@ function add_fstab_entry() {
 
 function generate_fstab() {
 	einfo "Generating fstab"
-	install -m0644 -o root -g root "/tmp/libero-install/contrib/fstab" /etc/fstab \
+	install -m0644 -o root -g root "$LIBERO_INSTALL_REPO_DIR/contrib/fstab" /etc/fstab \
 		|| die "Could not overwrite /etc/fstab"
 	if [[ $USED_ZFS != "true" && -n $DISK_ID_ROOT_TYPE ]]; then
 		add_fstab_entry "UUID=$(get_blkid_uuid_for_id "$DISK_ID_ROOT")" "/" "$DISK_ID_ROOT_TYPE" "$DISK_ID_ROOT_MOUNT_OPTS" "0 1"
 	fi
 	if [[ $IS_EFI == "true" ]]; then
 		add_fstab_entry "UUID=$(get_blkid_uuid_for_id "$DISK_ID_EFI")" "/boot/efi" "vfat" "defaults,noatime,fmask=0177,dmask=0077,noexec,nodev,nosuid,discard" "0 2"
-	elif [[ -v "DISK_ID_BIOS" ]]; then
+	else
 		add_fstab_entry "UUID=$(get_blkid_uuid_for_id "$DISK_ID_BIOS")" "/boot/bios" "vfat" "defaults,noatime,fmask=0177,dmask=0077,noexec,nodev,nosuid,discard" "0 2"
 	fi
-	# No fstab entry needed for root-bootable BIOS layout
 	if [[ -v "DISK_ID_SWAP" ]]; then
 		add_fstab_entry "UUID=$(get_blkid_uuid_for_id "$DISK_ID_SWAP")" "none" "swap" "defaults,discard" "0 0"
 	fi
 }
 
-function main_install_libero_in_chroot() {
+	function main_install_gentoo_in_chroot() {
 	[[ $# == 0 ]] || die "Too many arguments"
 
 	maybe_exec 'before_install'
@@ -680,34 +393,16 @@ function main_install_libero_in_chroot() {
 		mount_efivars
 		einfo "Mounting efi partition"
 		mount_by_id "$DISK_ID_EFI" "/boot/efi"
-	elif [[ -v "DISK_ID_BIOS" ]]; then
+	else
 		# Mount bios partition
 		einfo "Mounting bios partition"
 		mount_by_id "$DISK_ID_BIOS" "/boot/bios"
-	else
-		# No separate BIOS partition - kernel will be installed directly to root /boot
-		einfo "Using root partition for boot (no separate BIOS partition)"
 	fi
 
 	# Configure basic system things like timezone, locale, ...
 	maybe_exec 'before_configure_base_system'
 	configure_base_system
 	maybe_exec 'after_configure_base_system'
-
-	# Configure os-release
-	einfo "Configuring os-release"
-	echo 'NAME="Libero GNU/Linux"' > /usr/lib/os-release \
-		|| die "Could not write to /usr/lib/os-release"
-	echo 'ID=libero' >> /usr/lib/os-release \
-		|| die "Could not append to /usr/lib/os-release"
-	echo 'PRETTY_NAME="Libero GNU/Linux"' >> /usr/lib/os-release \
-		|| die "Could not append to /usr/lib/os-release"
-	echo 'ANSI_COLOR="1;34"' >> /usr/lib/os-release \
-		|| die "Could not append to /usr/lib/os-release"
-	echo 'HOME_URL="https://libero.eu.org/"' >> /usr/lib/os-release \
-		|| die "Could not append to /usr/lib/os-release"
-	echo 'VERSION_ID="1.1"' >> /usr/lib/os-release \
-		|| die "Could not append to /usr/lib/os-release"
 
 	# Prepare portage environment
 	maybe_exec 'before_configure_portage'
@@ -723,8 +418,8 @@ function main_install_libero_in_chroot() {
 [DEFAULT]
 main-repo = gentoo
 
-[libero]
-location = /var/db/repos/libero
+[gentoo]
+location = /var/db/repos/gentoo
 sync-type = git
 sync-uri = $PORTAGE_GIT_MIRROR
 auto-sync = yes
@@ -853,24 +548,20 @@ EOF
 		ewarn "Root password cleared, set one as soon as possible!"
 	fi
 
-	# If configured, change to libero testing at the last moment.
+	# If configured, change to gentoo testing at the last moment.
 	# This is to ensure a smooth installation process. You can deal
 	# with the blockers after installation ;)
 	if [[ $USE_PORTAGE_TESTING == "true" ]]; then
-		einfo "Adding ~$LIBERO_ARCH to ACCEPT_KEYWORDS"
-		echo "ACCEPT_KEYWORDS=\"~$LIBERO_ARCH\"" >> /etc/portage/make.conf \
+		einfo "Adding ~$GENTOO_ARCH to ACCEPT_KEYWORDS"
+		echo "ACCEPT_KEYWORDS=\"~$GENTOO_ARCH\"" >> /etc/portage/make.conf \
 			|| die "Could not modify /etc/portage/make.conf"
 	fi
 
 	maybe_exec 'after_install'
 
-	einfo "Libero installation complete."
+	einfo "Gentoo installation complete."
 	[[ $USED_LUKS == "true" ]] \
 		&& einfo "A backup of your luks headers can be found at '$LUKS_HEADER_BACKUP_DIR', in case you want to have a backup."
-	
-	# Clean up temporary files to free up disk space
-	cleanup_temp_files
-	
 	einfo "You may now reboot your system or execute ./install --chroot $ROOT_MOUNTPOINT to enter your system in a chroot."
 	einfo "Chrooting in this way is always possible in case you need to fix something after rebooting."
 }
@@ -883,7 +574,8 @@ function main_install() {
 
 	[[ $IS_EFI == "true" ]] \
 		&& mount_efivars
-	libero_chroot "$ROOT_MOUNTPOINT" "/tmp/libero-install/install" __install_libero_in_chroot
+	gentoo_chroot "$ROOT_MOUNTPOINT" "$GENTOO_INSTALL_REPO_BIND/install" __install_gentoo_in_chroot
+	gentoo_chroot "$ROOT_MOUNTPOINT" "$LIBERO_INSTALL_REPO_BIND/install" __install_gentoo_in_chroot
 }
 
 function main_chroot() {
@@ -891,5 +583,5 @@ function main_chroot() {
 	mountpoint -q -- "$1" \
 		|| die "'$1' is not a mountpoint"
 
-	libero_chroot "$@"
+	gentoo_chroot "$@"
 }

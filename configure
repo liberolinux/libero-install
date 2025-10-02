@@ -34,7 +34,7 @@ while [[ $# -gt 0 ]]; do
 	case "$1" in
 		""|"help"|"--help"|"-help"|"-h")
 			echo "Usage: $0 [config]"
-			echo "Starts the libero configurator. If no file is given, it defaults to 'libero.conf'."
+			echo "Starts the Libero configurator. If no file is given, it defaults to 'libero.conf'."
 			echo "If the file doesn't exist, the configurator loads default values, otherwise, the"
 			echo "the configuration is loaded into the configurator."
 			exit 0
@@ -154,35 +154,53 @@ function define_zfs_compression() {
 		echo -n "false"
 	fi
 }
-
 function define_disk_layout() {
-	local swapdev
-	case "$PARTITIONING_SCHEME" in
-		"classic_single_disk") define_disk_configuration_function "create_classic_single_disk_layout swap=$(define_swap) type=${PARTITIONING_BOOT_TYPE@Q} luks=${PARTITIONING_USE_LUKS@Q} root_fs=${PARTITIONING_ROOT_FS@Q}" "${PARTITIONING_DEVICE@Q}" ;;
-		"existing_partitions")
-			if [[ "$PARTITIONING_USE_SWAP" ]]; then
-				swapdev=${PARTITIONING_SWAP_DEVICE:-false}
-			else
-				swapdev=false
-			fi
-		    define_disk_configuration_function "create_existing_partitions_layout boot=${PARTITIONING_BOOT_DEVICE@Q} swap=${swapdev@Q} type=${PARTITIONING_BOOT_TYPE@Q}" "${PARTITIONING_DEVICE@Q}" ;;
-		"zfs_centric")         define_disk_configuration_function "create_zfs_centric_layout swap=$(define_swap) type=${PARTITIONING_BOOT_TYPE@Q} encrypt=${PARTITIONING_ZFS_USE_ENCRYPTION@Q} compress=$(define_zfs_compression) pool_type=${PARTITIONING_ZFS_POOL_TYPE@Q}" "${PARTITIONING_DEVICES[@]@Q}" ;;
-		"btrfs_centric")       define_disk_configuration_function "create_btrfs_centric_layout swap=$(define_swap) type=${PARTITIONING_BOOT_TYPE@Q} raid_type=${PARTITIONING_BTRFS_RAID_TYPE@Q} luks=${PARTITIONING_USE_LUKS@Q}" "${PARTITIONING_DEVICES[@]@Q}" ;;
-		"raid0_luks")          define_disk_configuration_function "create_raid0_luks_layout swap=$(define_swap) type=${PARTITIONING_BOOT_TYPE@Q} luks=${PARTITIONING_USE_LUKS@Q} root_fs=${PARTITIONING_ROOT_FS@Q}" "${PARTITIONING_DEVICES[@]@Q}" ;;
-		"raid1_luks")          define_disk_configuration_function "create_raid1_luks_layout swap=$(define_swap) type=${PARTITIONING_BOOT_TYPE@Q} luks=${PARTITIONING_USE_LUKS@Q} root_fs=${PARTITIONING_ROOT_FS@Q}" "${PARTITIONING_DEVICES[@]@Q}" ;;
-		"custom")
-			# Show current function declaration, trim trailing whitespace
-			declare -f disk_configuration \
-				| sed -e 's/\s*$//'
-			;;
-	esac
+    local swapdev
+    case "$PARTITIONING_SCHEME" in
+        "classic_single_disk") define_disk_configuration_function "create_classic_single_disk_layout swap=$(define_swap) type=${PARTITIONING_BOOT_TYPE@Q} luks=${PARTITIONING_USE_LUKS@Q} root_fs=${PARTITIONING_ROOT_FS@Q}" "${PARTITIONING_DEVICE@Q}" ;;
+        "existing_partitions")
+            if [[ "$PARTITIONING_USE_SWAP" ]]; then
+                swapdev=${PARTITIONING_SWAP_DEVICE:-false}
+            else
+                swapdev=false
+            fi
+            define_disk_configuration_function "create_existing_partitions_layout boot=${PARTITIONING_BOOT_DEVICE@Q} swap=${swapdev@Q} type=${PARTITIONING_BOOT_TYPE@Q}" "${PARTITIONING_DEVICE@Q}" ;;
+        "zfs_centric")         define_disk_configuration_function "create_zfs_centric_layout swap=$(define_swap) type=${PARTITIONING_BOOT_TYPE@Q} encrypt=${PARTITIONING_ZFS_USE_ENCRYPTION@Q} compress=$(define_zfs_compression) pool_type=${PARTITIONING_ZFS_POOL_TYPE@Q}" "${PARTITIONING_DEVICES[@]@Q}" ;;
+        "btrfs_centric")       define_disk_configuration_function "create_btrfs_centric_layout swap=$(define_swap) type=${PARTITIONING_BOOT_TYPE@Q} raid_type=${PARTITIONING_BTRFS_RAID_TYPE@Q} luks=${PARTITIONING_USE_LUKS@Q}" "${PARTITIONING_DEVICES[@]@Q}" ;;
+        "raid0_luks")          define_disk_configuration_function "create_raid0_luks_layout swap=$(define_swap) type=${PARTITIONING_BOOT_TYPE@Q} luks=${PARTITIONING_USE_LUKS@Q} root_fs=${PARTITIONING_ROOT_FS@Q}" "${PARTITIONING_DEVICES[@]@Q}" ;;
+        "raid1_luks")          define_disk_configuration_function "create_raid1_luks_layout swap=$(define_swap) type=${PARTITIONING_BOOT_TYPE@Q} luks=${PARTITIONING_USE_LUKS@Q} root_fs=${PARTITIONING_ROOT_FS@Q}" "${PARTITIONING_DEVICES[@]@Q}" ;;
+        "custom")
+            # Show current function declaration, trim trailing whitespace
+            declare -f disk_configuration \
+                | sed -e 's/\s*$//'
+            ;;
+    esac
 }
 
-ALL_LIBERO_ARCHS=("x86")
+# The following arrays are intentionally defined as static lists used by
+# the interactive configurator. They are referenced dynamically; mark them
+# as intentionally unused to avoid shellcheck SC2034 warnings.
+# shellcheck disable=SC2034
+ALL_LIBERO_ARCHS=("x86" "amd64" "arm" "arm64")
+# shellcheck disable=SC2034
 ALL_LIBERO_SUBARCHS=("i486" "i686")
 ALL_STAGE3_VARIANTS=(
-	"openrc"                   "openrc                  | Minimal OpenRC base"
+	"openrc"                   "openrc                  | Minimal OpenRC base (recommended)"
+	"openrc-splitusr"          "openrc-splitusr         | Minimal OpenRC base with a split-usr filesystem layout"
+	"desktop-openrc"           "openrc-desktop          | OpenRC, desktop profile, might have blockers"
 	"systemd"                  "systemd                 | Minimal systemd base (recommended)"
+	"desktop-systemd"          "systemd-desktop         | systemd, desktop profile, might have blockers"
+	"nomultilib-openrc"        "nomultilib-openrc       | Minimal OpenRC base without 32bits support (Experimental)"
+	"nomultilib-systemd"       "nomultilib-systemd      | Minimal systemd base without 32bits support (Experimental)"
+	"x32-openrc"               "x32-openrc              | Minimal OpenRC base without 64bits support (Experimental)"
+	"x32-systemd"              "x32-systemd             | Minimal systemd base without 64bits support (Experimental)"
+	"llvm-openrc"              "llvm-openrc             | Minimal OpenRC base compiled with LLVM (Experimental)"
+	"llvm-systemd"             "llvm-systemd            | Minimal systemd base compiled with LLVM (Experimental)"
+	"hardened-openrc"          "hardened-openrc         | Hardened OpenRC base (Experimental)"
+	"hardened-selinux-openrc"  "hardened-selinux-openrc | Hardened OpenRC base with SELinux (Experimental)"
+	"musl"                     "musl-openrc             | Minimal OpenRC base using musl (Experimental)"
+	"musl-llvm"                "musl-llvm-openrc        | Minimal OpenRC base using musl compiled with LLVM (Experimental)"
+	"musl-hardened"            "musl-hardened-openrc    | Hardened OpenRC base using musl (Experimental)"
 )
 
 ALL_PARTITIONING_SCHEMES=(
@@ -386,7 +404,7 @@ function load_config() {
 }
 
 function load_default_config() {
-	HOSTNAME="libero"
+	HOSTNAME="gentoo"
 	TIMEZONE="$(get_timezone)"
 	KEYMAP="$(get_default_keymap)"
 	KEYMAP_INITRAMFS="$KEYMAP"
@@ -410,9 +428,9 @@ function load_default_config() {
 	PORTAGE_GIT_FULL_HISTORY=false
 	PORTAGE_GIT_MIRROR="https://anongit.gentoo.org/git/repo/sync/gentoo.git"
 
-	LIBERO_MIRROR="https://mirror.leaseweb.com/gentoo"
-	LIBERO_ARCH="x86"
-	LIBERO_SUBARCH=""
+	GENTOO_MIRROR="https://mirror.leaseweb.com/gentoo"
+	GENTOO_ARCH="amd64"
+	GENTOO_SUBARCH=""
 
 	USE_PORTAGE_TESTING=true
 	SELECT_MIRRORS=false
@@ -717,7 +735,7 @@ function menu_exit() {
 		dialog \
 			--help-button --help-label "Back" \
 			--yes-label "Save" --no-label "Discard" \
-			--yesno "Do you want to save your configuration?\n(Press <ESC><ESC>, or choose <Back> to continue libero configuration)." \
+			--yesno "Do you want to save your configuration?\n(Press <ESC><ESC>, or choose <Back> to continue Libero configuration)." \
 			"${CONFIRM_SIZE[@]}"
 
 		local diag_exit="$?"
@@ -778,7 +796,7 @@ function menu() {
 		--help-button \
 		--default-item "$SELECTED_MENU_ITEM" \
 		--ok-label "Select" --cancel-label "Save" \
-		--menu "This is the libero configuration menu. Read and adjust all options below carefully. Save your desired configuration and run ./install afterwards. Use <Help> if you want further information on any option." \
+	--menu "This is the Libero configuration menu. Read and adjust all options below carefully. Save your desired configuration and run ./install afterwards. Use <Help> if you want further information on any option." \
 		"${MENU_SIZE[@]}" "${tag_item_list[@]}"
 
 	local diag_exit="$?"
@@ -871,9 +889,9 @@ MENU_ITEMS=(
 	"PORTAGE_SYNC_TYPE"
 	"PORTAGE_GIT_FULL_HISTORY"
 	"PORTAGE_GIT_MIRROR"
-	"LIBERO_MIRROR"
-	"LIBERO_ARCH"
-	"LIBERO_SUBARCH"
+	"GENTOO_MIRROR"
+	"GENTOO_ARCH"
+	"GENTOO_SUBARCH"
 	"USE_PORTAGE_TESTING"
 	"SELECT_MIRRORS"
 	"SELECT_MIRRORS_LARGE_FILE"
@@ -1036,7 +1054,7 @@ function PARTITIONING_ROOT_FS_menu()  {
 function PARTITIONING_USE_LUKS_tag()   { echo " ├ LUKS Encryption"; }
 function PARTITIONING_USE_LUKS_label() { on_off_label "$PARTITIONING_USE_LUKS" " ├ "; }
 function PARTITIONING_USE_LUKS_show()  { [[ $PARTITIONING_SCHEME != "custom" ]] && one_of "$PARTITIONING_SCHEME" "classic_single_disk" "btrfs_centric" "raid0_luks" "raid1_luks"; }
-function PARTITIONING_USE_LUKS_help()  { echo "Determines if LUKS will be used to encrypt your root partition. You can export the desired encryption key via export LIBERO_INSTALL_ENCRYPTION_KEY='...' before installing if you don't want to be asked."; }
+function PARTITIONING_USE_LUKS_help()  { echo "Determines if LUKS will be used to encrypt your root partition. You can export the desired encryption key via export GENTOO_INSTALL_ENCRYPTION_KEY='...' before installing if you don't want to be asked."; }
 function PARTITIONING_USE_LUKS_menu()  {
 	on_off_toggle "PARTITIONING_USE_LUKS"
 	UNSAVED_CHANGES=true
@@ -1045,7 +1063,7 @@ function PARTITIONING_USE_LUKS_menu()  {
 function PARTITIONING_ZFS_USE_ENCRYPTION_tag()   { echo " ├ ZFS Encryption"; }
 function PARTITIONING_ZFS_USE_ENCRYPTION_label() { on_off_label "$PARTITIONING_ZFS_USE_ENCRYPTION" " ├ "; }
 function PARTITIONING_ZFS_USE_ENCRYPTION_show()  { [[ $PARTITIONING_SCHEME != "custom" ]] && one_of "$PARTITIONING_SCHEME" "zfs_centric" && one_of "$PARTITIONING_ZFS_POOL_TYPE" "standard"; }
-function PARTITIONING_ZFS_USE_ENCRYPTION_help()  { echo "Determines if ZFS encryption will be used to encrypt your root partition. You can export the desired encryption key via export LIBERO_INSTALL_ENCRYPTION_KEY='...' before installing if you don't want to be asked."; }
+function PARTITIONING_ZFS_USE_ENCRYPTION_help()  { echo "Determines if ZFS encryption will be used to encrypt your root partition. You can export the desired encryption key via export GENTOO_INSTALL_ENCRYPTION_KEY='...' before installing if you don't want to be asked."; }
 function PARTITIONING_ZFS_USE_ENCRYPTION_menu()  {
 	on_off_toggle "PARTITIONING_ZFS_USE_ENCRYPTION"
 	UNSAVED_CHANGES=true
@@ -1295,33 +1313,7 @@ function LOCALE_menu()  {
 		"$LOCALE" \
 		"${LOCALE_A[@]}"
 	then
-		local new_locale="$dialog_out"
-		
-		# Validate that the selected locale has a corresponding entry in LOCALES
-		if [[ -n "$LOCALES" ]] && [[ "$new_locale" != "C" ]] && [[ "$new_locale" != "POSIX" ]]; then
-			local locale_base="${new_locale%.*}"
-			local found_match=false
-			
-			# Check if there's a matching entry in LOCALES
-			local IFS=$'\n'
-			for locale_entry in $LOCALES; do
-				if [[ "$locale_entry" =~ ^${locale_base}\. ]]; then
-					found_match=true
-					break
-				fi
-			done
-			
-			if [[ "$found_match" != "true" ]]; then
-				dialog --title "Locale Warning" --yesno \
-					"Warning: The selected locale '$new_locale' does not appear to have a corresponding entry in the LOCALES list.\n\nFor proper locale support, you should add an entry like '${locale_base}.UTF-8 UTF-8' to the LOCALES list.\n\nDo you want to proceed anyway?" \
-					12 70
-				if [[ $? -ne 0 ]]; then
-					return 0  # Return to menu without changing
-				fi
-			fi
-		fi
-		
-		LOCALE="$new_locale"
+		LOCALE="$dialog_out"
 		UNSAVED_CHANGES=true
 	else
 		# Return to menu
@@ -1460,36 +1452,36 @@ function PORTAGE_GIT_MIRROR_menu()  {
 	UNSAVED_CHANGES=true
 }
 
-function LIBERO_MIRROR_tag()   { echo "Libero mirror"; }
-function LIBERO_MIRROR_label() { echo "($(ellipsis 20 "$LIBERO_MIRROR"))"; }
-function LIBERO_MIRROR_show()  { return 0; }
-function LIBERO_MIRROR_help()  { echo "Enter the initial libero mirror that should be used for the installation process (until mirrorselect is run)."; }
-function LIBERO_MIRROR_menu()  {
+function GENTOO_MIRROR_tag()   { echo "Gentoo mirror"; }
+function GENTOO_MIRROR_label() { echo "($(ellipsis 20 "$GENTOO_MIRROR"))"; }
+function GENTOO_MIRROR_show()  { return 0; }
+function GENTOO_MIRROR_help()  { echo "Enter the initial gentoo mirror that should be used for the installation process (until mirrorselect is run)."; }
+function GENTOO_MIRROR_menu()  {
 	dialog \
-		--title "Select libero mirror" \
-		--inputbox "Enter the initial libero mirror that should be used for the system (or until mirrorselect is run). You need to enter the FULL PATH to the tree including relevant subdirectories. Leave this as it is if in doubt!" \
-		"${INPUTBOX_SIZE[@]}" "$LIBERO_MIRROR" \
+		--title "Select gentoo mirror" \
+		--inputbox "Enter the initial gentoo mirror that should be used for the system (or until mirrorselect is run). You need to enter the FULL PATH to the tree including relevant subdirectories. Leave this as it is if in doubt!" \
+		"${INPUTBOX_SIZE[@]}" "$GENTOO_MIRROR" \
 		|| return 0
-	LIBERO_MIRROR="$dialog_out"
+	GENTOO_MIRROR="$dialog_out"
 	UNSAVED_CHANGES=true
 }
 
-function LIBERO_ARCH_tag()   { echo "Libero arch"; }
-function LIBERO_ARCH_label() { echo "($LIBERO_ARCH)"; }
-function LIBERO_ARCH_show()  { return 0; }
-function LIBERO_ARCH_help()  { echo "Select libero's architecture tag for the new system."; }
-function LIBERO_ARCH_menu()  {
+function GENTOO_ARCH_tag()   { echo "Gentoo arch"; }
+function GENTOO_ARCH_label() { echo "($GENTOO_ARCH)"; }
+function GENTOO_ARCH_show()  { return 0; }
+function GENTOO_ARCH_help()  { echo "Select gentoo's architecture tag for the new system."; }
+function GENTOO_ARCH_menu()  {
 	if menu_radiolist \
 		"Select architecture" \
 		"Select the architecture for the new system." \
-		"$LIBERO_ARCH" \
-		"${ALL_LIBERO_ARCHS[@]}"
+		"$GENTOO_ARCH" \
+		"${ALL_GENTOO_ARCHS[@]}"
 	then
-		LIBERO_ARCH="$dialog_out"
-		if [[ "$LIBERO_ARCH" == "x86" ]]; then
-			LIBERO_SUBARCH_menu
+		GENTOO_ARCH="$dialog_out"
+		if [[ "$GENTOO_ARCH" == "x86" ]]; then
+			GENTOO_SUBARCH_menu
 		else
-			LIBERO_SUBARCH=""
+			GENTOO_SUBARCH=""
 			# Return to menu
 			true
 		fi
@@ -1500,18 +1492,18 @@ function LIBERO_ARCH_menu()  {
 	fi
 }
 
-function LIBERO_SUBARCH_tag()   { echo "Libero sub-arch"; }
-function LIBERO_SUBARCH_label() { echo "($LIBERO_SUBARCH)"; }
-function LIBERO_SUBARCH_show()  { [[ "$LIBERO_ARCH" == "x86" ]]; }
-function LIBERO_SUBARCH_help()  { echo "Select libero's sub-architecture tag for the new system."; }
-function LIBERO_SUBARCH_menu()  {
+function GENTOO_SUBARCH_tag()   { echo "Gentoo sub-arch"; }
+function GENTOO_SUBARCH_label() { echo "($GENTOO_SUBARCH)"; }
+function GENTOO_SUBARCH_show()  { [[ "$GENTOO_ARCH" == "x86" ]]; }
+function GENTOO_SUBARCH_help()  { echo "Select gentoo's sub-architecture tag for the new system."; }
+function GENTOO_SUBARCH_menu()  {
 	if menu_radiolist \
 		"Select x86 sub-architecture" \
 		"Select the specific sub-architecture for x86." \
-		"$LIBERO_SUBARCH" \
-		"${ALL_LIBERO_SUBARCHS[@]}"
+		"$GENTOO_SUBARCH" \
+		"${ALL_GENTOO_SUBARCHS[@]}"
 	then
-		LIBERO_SUBARCH="$dialog_out"
+		GENTOO_SUBARCH="$dialog_out"
 		UNSAVED_CHANGES=true
 	else
 		# Return to menu
@@ -1519,10 +1511,10 @@ function LIBERO_SUBARCH_menu()  {
 	fi
 }
 
-function USE_PORTAGE_TESTING_tag()   { echo "Enable bleeding edge (~$LIBERO_ARCH)"; }
+function USE_PORTAGE_TESTING_tag()   { echo "Enable bleeding edge (~$GENTOO_ARCH)"; }
 function USE_PORTAGE_TESTING_label() { on_off_label "$USE_PORTAGE_TESTING"; }
 function USE_PORTAGE_TESTING_show()  { return 0; }
-function USE_PORTAGE_TESTING_help()  { echo "Determines if the system should use bleeding edge software from the respective architecture's testing branch. This will add ACCEPT_KEYWORDS=\"~\$LIBERO_ARCH\" to /etc/portage/make.conf"; }
+function USE_PORTAGE_TESTING_help()  { echo "Determines if the system should use bleeding edge software from the respective architecture's testing branch. This will add ACCEPT_KEYWORDS=\"~\$GENTOO_ARCH\" to /etc/portage/make.conf"; }
 function USE_PORTAGE_TESTING_menu()  {
 	on_off_toggle "USE_PORTAGE_TESTING"
 	UNSAVED_CHANGES=true
@@ -1531,7 +1523,7 @@ function USE_PORTAGE_TESTING_menu()  {
 function SELECT_MIRRORS_tag()   { echo "Run mirrorselect"; }
 function SELECT_MIRRORS_label() { on_off_label "$SELECT_MIRRORS"; }
 function SELECT_MIRRORS_show()  { return 0; }
-function SELECT_MIRRORS_help()  { echo "Determines if mirrorselect will be used to determine the best libero mirror for the new system."; }
+function SELECT_MIRRORS_help()  { echo "Determines if mirrorselect will be used to determine the best gentoo mirror for the new system."; }
 function SELECT_MIRRORS_menu()  {
 	on_off_toggle "SELECT_MIRRORS"
 	UNSAVED_CHANGES=true
@@ -1595,7 +1587,7 @@ EOF
 function ADDITIONAL_PACKAGES_tag()   { echo "Additional packages"; }
 function ADDITIONAL_PACKAGES_label() { echo "${#ADDITIONAL_PACKAGES[@]} packages"; }
 function ADDITIONAL_PACKAGES_show()  { return 0; }
-function ADDITIONAL_PACKAGES_help()  { echo "Enter additional packages that should be installed. It is recommended to keep this to a minimum, because of the quite \"interactive\" nature of libero package management ;)"; }
+function ADDITIONAL_PACKAGES_help()  { echo "Enter additional packages that should be installed. It is recommended to keep this to a minimum, because of the quite \"interactive\" nature of gentoo package management ;)"; }
 function ADDITIONAL_PACKAGES_menu()  {
 	dialog \
 		--title "Additional packages" \
@@ -1610,68 +1602,8 @@ function ADDITIONAL_PACKAGES_menu()  {
 ################################################
 # Menu functions
 
-function validate_configuration() {
-	local errors=()
-	local warnings=()
-	
-	# Validate locale configuration
-	if [[ -n "$LOCALE" ]] && [[ "$LOCALE" != "C" ]] && [[ "$LOCALE" != "POSIX" ]] && [[ "$LOCALE" != "C.UTF-8" ]]; then
-		if [[ -n "$LOCALES" ]]; then
-			local locale_base="${LOCALE%.*}"
-			local found_match=false
-			
-			# Check if there's a matching entry in LOCALES
-			local IFS=$'\n'
-			for locale_entry in $LOCALES; do
-				if [[ "$locale_entry" =~ ^${locale_base}\. ]]; then
-					found_match=true
-					break
-				fi
-			done
-			
-			if [[ "$found_match" != "true" ]]; then
-				warnings+=("Selected locale '$LOCALE' does not have a corresponding entry in LOCALES. Consider adding '${locale_base}.UTF-8 UTF-8' to LOCALES for proper locale support.")
-			fi
-		else
-			warnings+=("LOCALE is set to '$LOCALE' but LOCALES is empty. You may need to add locale entries to LOCALES for proper locale support.")
-		fi
-	fi
-	
-	# Display warnings if any
-	if [[ ${#warnings[@]} -gt 0 ]]; then
-		local warning_text="Configuration warnings found:\n\n"
-		for warning in "${warnings[@]}"; do
-			warning_text+="• $warning\n\n"
-		done
-		warning_text+="Do you want to continue saving anyway?"
-		
-		if ! dialog --title "Configuration Warnings" --yesno "$warning_text" 15 70; then
-			return 1
-		fi
-	fi
-	
-	# Display errors if any
-	if [[ ${#errors[@]} -gt 0 ]]; then
-		local error_text="Configuration errors found:\n\n"
-		for error in "${errors[@]}"; do
-			error_text+="• $error\n\n"
-		done
-		error_text+="Please fix these errors before saving."
-		
-		dialog --title "Configuration Errors" --msgbox "$error_text" 15 70
-		return 1
-	fi
-	
-	return 0
-}
-
 # $1: filename
 function save() {
-	# Validate configuration before saving
-	if ! validate_configuration; then
-		return 1
-	fi
-	
 	if [[ "$KEYMAP_INITRAMFS_OTHER" == "false" ]]; then
 		KEYMAP_INITRAMFS="$KEYMAP"
 	fi
@@ -1707,17 +1639,17 @@ SYSTEMD_INITRAMFS_SSHD=${SYSTEMD_INITRAMFS_SSHD@Q}
 
 
 ################################################
-# Libero configuration
+# Gentoo configuration
 
 PORTAGE_SYNC_TYPE=${PORTAGE_SYNC_TYPE@Q}
 PORTAGE_GIT_FULL_HISTORY=${PORTAGE_GIT_FULL_HISTORY@Q}
 PORTAGE_GIT_MIRROR=${PORTAGE_GIT_MIRROR@Q}
-LIBERO_MIRROR=${LIBERO_MIRROR@Q}
-LIBERO_ARCH=${LIBERO_ARCH@Q}
-LIBERO_SUBARCH=${LIBERO_SUBARCH@Q}
+GENTOO_MIRROR=${GENTOO_MIRROR@Q}
+GENTOO_ARCH=${GENTOO_ARCH@Q}
+GENTOO_SUBARCH=${GENTOO_SUBARCH@Q}
 STAGE3_VARIANT=${STAGE3_VARIANT@Q}
-STAGE3_BASENAME="stage3-\$LIBERO_ARCH-\$STAGE3_VARIANT"
-STAGE3_BASENAME_CUSTOM=\$([[ \$STAGE3_VARIANT == *x32* ]] && echo "stage3-$STAGE3_VARIANT" || echo "stage3-$LIBERO_SUBARCH-$STAGE3_VARIANT")
+STAGE3_BASENAME="stage3-\$GENTOO_ARCH-\$STAGE3_VARIANT"
+STAGE3_BASENAME_CUSTOM=\$([[ \$STAGE3_VARIANT == *x32* ]] && echo "stage3-$STAGE3_VARIANT" || echo "stage3-$GENTOO_SUBARCH-$STAGE3_VARIANT")
 USE_PORTAGE_TESTING=${USE_PORTAGE_TESTING@Q}
 SELECT_MIRRORS=${SELECT_MIRRORS@Q}
 SELECT_MIRRORS_LARGE_FILE=${SELECT_MIRRORS_LARGE_FILE@Q}
